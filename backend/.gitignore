@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+diploma_tracker.db
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Environment
+.env

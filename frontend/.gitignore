@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Production
+/build
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+```
+
+## 📄 `backend/uploads/.gitkeep` (To keep uploads folder in git)
+```
+# This file ensures the uploads directory is tracked by git
+# but the actual uploaded files are ignored
+```
+
+---
+
+## 📂 Complete Project Structure with .gitignore
+```
+misk-diploma-tracker/
+├── .gitignore                 # Root gitignore (main one)
+├── README.md
+│
+├── backend/
+│   ├── .gitignore            # Optional backend-specific
+│   ├── app.py
+│   ├── database.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── utils.py
+│   ├── requirements.txt
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── student.py
+│   │   ├── teacher.py
+│   │   └── health.py
+│   └── uploads/
+│       └── .gitkeep          # Keeps folder, ignores contents
+│
+└── frontend/
+    ├── .gitignore            # Optional frontend-specific
+    ├── package.json
+    ├── public/
+    │   └── index.html
+    └── src/
+        ├── index.js
+        ├── App.js
+        ├── App.css
+        ├── api/
+        │   └── client.js
+        ├── utils/
+        │   └── auth.js
+        └── components/
+            ├── HomePage.js
+            ├── LoginPage.js
+            ├── StudentDashboard.js
+            ├── TeacherDashboard.js
+            ├── QuadrantCircle3D.js
+            └── UploadModal.js
