@@ -84,8 +84,8 @@ function LoginPage() {
 
         <div className="demo-credentials">
           <strong>Demo Credentials:</strong><br />
-          Student: username <code>student1</code> password <code>password123</code><br />
-          Teacher: username <code>teacher1</code> password <code>password123</code>
+          Student - Username: <code>student1</code> Password: <code>password123</code><br />
+          Teacher - Username: <code>teacher1</code> Password: <code>password123</code>
         </div>
       </div>
     </div>

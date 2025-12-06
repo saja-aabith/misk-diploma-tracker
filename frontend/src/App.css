@@ -1,8 +1,36 @@
+
+/* Add this to the top of your existing App.css */
+
+/* Subtle background pattern */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(circle at 20% 50%, rgba(2, 102, 75, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(46, 204, 113, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(155, 89, 182, 0.02) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Rest of your existing CSS... */
+
+
+
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
+
+
+
+
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -10,7 +38,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8f5f1 100%);
   min-height: 100vh;
 }
 
@@ -29,7 +57,7 @@ body {
 
 .header {
   background: white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(2, 102, 75, 0.1);
   padding: 20px 0;
 }
 
@@ -42,7 +70,7 @@ body {
 .logo {
   font-size: 24px;
   font-weight: bold;
-  color: #2c3e50;
+  color: #02664b;
 }
 
 .hero {
@@ -57,13 +85,13 @@ body {
 
 .hero h1 {
   font-size: 48px;
-  color: #2c3e50;
+  color: #02664b;
   margin-bottom: 16px;
 }
 
 .hero p {
   font-size: 20px;
-  color: #7f8c8d;
+  color: #555;
   margin-bottom: 40px;
 }
 
@@ -90,31 +118,32 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #02664b;
   color: white;
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 8px 16px rgba(2, 102, 75, 0.3);
+  background: #024d38;
 }
 
 .btn-secondary {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #02664b 0%, #038a63 100%);
   color: white;
 }
 
 .btn-secondary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(245, 87, 108, 0.4);
+  box-shadow: 0 8px 16px rgba(2, 102, 75, 0.3);
 }
 
 .footer {
   background: white;
   padding: 20px 0;
   text-align: center;
-  color: #7f8c8d;
-  border-top: 1px solid #ecf0f1;
+  color: #666;
+  border-top: 1px solid #e0e0e0;
 }
 
 /* LoginPage */
@@ -129,7 +158,7 @@ body {
 .login-card {
   background: white;
   border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+  box-shadow: 0 10px 40px rgba(2, 102, 75, 0.15);
   padding: 40px;
   width: 100%;
   max-width: 400px;
@@ -137,7 +166,7 @@ body {
 
 .login-card h2 {
   font-size: 32px;
-  color: #2c3e50;
+  color: #02664b;
   margin-bottom: 32px;
   text-align: center;
 }
@@ -149,7 +178,7 @@ body {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: #2c3e50;
+  color: #02664b;
   font-weight: 500;
 }
 
@@ -157,7 +186,7 @@ body {
 .form-group select {
   width: 100%;
   padding: 12px;
-  border: 2px solid #ecf0f1;
+  border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 16px;
   transition: border-color 0.3s;
@@ -166,13 +195,13 @@ body {
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #02664b;
 }
 
 .btn-login {
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #02664b;
   color: white;
   border: none;
   border-radius: 8px;
@@ -184,7 +213,8 @@ body {
 
 .btn-login:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 8px 16px rgba(2, 102, 75, 0.3);
+  background: #024d38;
 }
 
 .btn-login:disabled {
@@ -195,10 +225,11 @@ body {
 .demo-credentials {
   margin-top: 24px;
   padding: 16px;
-  background: #f8f9fa;
+  background: #f0f9f6;
   border-radius: 8px;
   font-size: 14px;
-  color: #6c757d;
+  color: #02664b;
+  border: 1px solid #d0ebe3;
 }
 
 .error-message {
@@ -218,7 +249,7 @@ body {
 
 .dashboard-header {
   background: white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(2, 102, 75, 0.1);
   padding: 20px 0;
   margin-bottom: 40px;
 }
@@ -230,12 +261,12 @@ body {
 }
 
 .user-info h2 {
-  color: #2c3e50;
+  color: #02664b;
   font-size: 24px;
 }
 
 .user-info p {
-  color: #7f8c8d;
+  color: #666;
   margin-top: 4px;
 }
 
@@ -257,13 +288,13 @@ body {
 .card {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 12px rgba(2, 102, 75, 0.08);
   padding: 24px;
   margin-bottom: 24px;
 }
 
 .card h3 {
-  color: #2c3e50;
+  color: #02664b;
   margin-bottom: 20px;
   font-size: 20px;
 }
@@ -343,7 +374,7 @@ body {
 .objective-title {
   font-size: 18px;
   font-weight: 600;
-  color: #2c3e50;
+  color: #02664b;
 }
 
 .status-badge {
@@ -370,12 +401,12 @@ body {
 }
 
 .status-approved {
-  background: #2ecc71;
+  background: #02664b;
   color: white;
 }
 
 .objective-description {
-  color: #7f8c8d;
+  color: #666;
   font-size: 14px;
   margin-bottom: 12px;
 }
@@ -391,7 +422,7 @@ body {
 .btn-upload {
   margin-top: 12px;
   padding: 8px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #02664b;
   color: white;
   border: none;
   border-radius: 6px;
@@ -402,7 +433,8 @@ body {
 
 .btn-upload:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 8px rgba(2, 102, 75, 0.3);
+  background: #024d38;
 }
 
 /* Modal */
@@ -439,7 +471,7 @@ body {
 
 .modal-header h3 {
   font-size: 24px;
-  color: #2c3e50;
+  color: #02664b;
 }
 
 .btn-close {
@@ -465,20 +497,20 @@ body {
 .file-input {
   margin: 16px 0;
   padding: 12px;
-  border: 2px dashed #ecf0f1;
+  border: 2px dashed #e0e0e0;
   border-radius: 8px;
   cursor: pointer;
   transition: border-color 0.3s;
 }
 
 .file-input:hover {
-  border-color: #667eea;
+  border-color: #02664b;
 }
 
 textarea {
   width: 100%;
   padding: 12px;
-  border: 2px solid #ecf0f1;
+  border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
@@ -488,7 +520,7 @@ textarea {
 
 textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #02664b;
 }
 
 /* Submissions */
@@ -501,7 +533,7 @@ textarea:focus {
   padding: 16px;
   background: #f8f9fa;
   border-radius: 8px;
-  border-left: 4px solid #3498db;
+  border-left: 4px solid #02664b;
 }
 
 .submission-header {
@@ -513,12 +545,12 @@ textarea:focus {
 
 .submission-title {
   font-weight: 600;
-  color: #2c3e50;
+  color: #02664b;
 }
 
 .submission-meta {
   font-size: 14px;
-  color: #7f8c8d;
+  color: #666;
   margin-bottom: 8px;
 }
 
@@ -550,7 +582,7 @@ textarea:focus {
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
-  border-bottom: 2px solid #ecf0f1;
+  border-bottom: 2px solid #e0e0e0;
 }
 
 .tab {
@@ -561,17 +593,17 @@ textarea:focus {
   cursor: pointer;
   font-size: 16px;
   font-weight: 500;
-  color: #7f8c8d;
+  color: #666;
   transition: all 0.3s;
 }
 
 .tab.active {
-  color: #667eea;
-  border-bottom-color: #667eea;
+  color: #02664b;
+  border-bottom-color: #02664b;
 }
 
 .tab:hover {
-  color: #667eea;
+  color: #02664b;
 }
 
 .filter-bar {
@@ -583,7 +615,7 @@ textarea:focus {
 
 .filter-bar select {
   padding: 10px 16px;
-  border: 2px solid #ecf0f1;
+  border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
@@ -604,18 +636,18 @@ textarea:focus {
 }
 
 .queue-info h4 {
-  color: #2c3e50;
+  color: #02664b;
   margin-bottom: 4px;
 }
 
 .queue-info p {
   font-size: 14px;
-  color: #7f8c8d;
+  color: #666;
 }
 
 .btn-review {
   padding: 8px 20px;
-  background: #667eea;
+  background: #02664b;
   color: white;
   border: none;
   border-radius: 6px;
@@ -625,7 +657,7 @@ textarea:focus {
 }
 
 .btn-review:hover {
-  background: #5568d3;
+  background: #024d38;
 }
 
 .review-form {
@@ -657,7 +689,7 @@ textarea:focus {
 .btn-approve {
   flex: 1;
   padding: 12px;
-  background: #2ecc71;
+  background: #02664b;
   color: white;
   border: none;
   border-radius: 8px;
@@ -667,7 +699,7 @@ textarea:focus {
 }
 
 .btn-approve:hover {
-  background: #27ae60;
+  background: #024d38;
 }
 
 .btn-reject {
@@ -726,7 +758,7 @@ textarea:focus {
 .loading {
   text-align: center;
   padding: 40px;
-  color: #7f8c8d;
+  color: #666;
 }
 
 .success-message {

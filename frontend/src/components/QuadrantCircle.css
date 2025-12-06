@@ -1,0 +1,62 @@
+/* Quadrant segment hover effect */
+.quadrant-segment {
+  transition: all 0.3s ease;
+}
+
+/* Enhanced icon badge hover effect */
+.icon-badge:hover {
+  transform: scale(1.15) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 30px rgba(2, 102, 75, 0.3) !important;
+}
+
+/* Enhanced pulse animation for icon badges */
+@keyframes badge-pulse {
+  0%, 100% {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 20px rgba(0, 0, 0, 0.1);
+  }
+  50% {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 0 40px rgba(2, 102, 75, 0.3);
+  }
+}
+
+.icon-badge-pulse {
+  animation: badge-pulse 3s ease-in-out infinite;
+}
+
+/* Glow effect on hover for segments */
+.quadrant-segment:hover {
+  filter: url(#glow) brightness(1.15) !important;
+  cursor: pointer;
+}
+
+/* SVG text shadow effect */
+text {
+  paint-order: stroke fill;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .icon-badge {
+    width: 70px !important;
+    height: 70px !important;
+    font-size: 28px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .icon-badge {
+    width: 60px !important;
+    height: 60px !important;
+    font-size: 24px !important;
+  }
+}
+
+/* Glow animation */
+@keyframes glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.1)) drop-shadow(0 0 40px rgba(2, 102, 75, 0.05));
+  }
+  50% {
+    filter: drop-shadow(0 0 30px rgba(0, 0, 0, 0.15)) drop-shadow(0 0 60px rgba(2, 102, 75, 0.15));
+  }
+}
