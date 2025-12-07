@@ -1,45 +1,178 @@
-/* Quadrant segment hover effect */
+/* -------------------------------------------------------------
+   GLOBAL FUTURISTIC SETTINGS
+------------------------------------------------------------- */
+
+:root {
+  --misk-green: #02664B;
+  --glow-weak: rgba(2, 102, 75, 0.35);
+  --glow-mid: rgba(2, 102, 75, 0.55);
+  --glow-strong: rgba(2, 102, 75, 0.85);
+}
+
+/* Strengthen quadrant segment hover effect */
 .quadrant-segment {
-  transition: all 0.3s ease;
+  transition: 0.35s ease;
 }
 
-/* Enhanced icon badge hover effect */
-.icon-badge:hover {
-  transform: scale(1.15) !important;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 30px rgba(2, 102, 75, 0.3) !important;
-}
-
-/* Enhanced pulse animation for icon badges */
-@keyframes badge-pulse {
-  0%, 100% {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 20px rgba(0, 0, 0, 0.1);
-  }
-  50% {
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 0 40px rgba(2, 102, 75, 0.3);
-  }
-}
-
-.icon-badge-pulse {
-  animation: badge-pulse 3s ease-in-out infinite;
-}
-
-/* Glow effect on hover for segments */
 .quadrant-segment:hover {
-  filter: url(#glow) brightness(1.15) !important;
+  filter: url(#glow) brightness(1.3) saturate(1.2);
   cursor: pointer;
 }
 
-/* SVG text shadow effect */
-text {
-  paint-order: stroke fill;
+/* -------------------------------------------------------------
+   ICON BADGES — MISK-GREEN FUTURISTIC GLOW SYSTEM
+------------------------------------------------------------- */
+
+.icon-badge {
+  position: relative;
+  transition: 0.4s ease;
+  color: var(--misk-green) !important;
+
+  /* Base hologram glow */
+  box-shadow:
+    0 0 18px var(--glow-weak),
+    0 0 35px var(--glow-mid),
+    inset 0 0 18px var(--glow-weak);
 }
 
-/* Responsive adjustments */
+/* Lucide icon glow */
+.icon-badge .sketch-icon {
+  stroke-width: 2.2;
+  transition: 0.4s ease;
+  color: var(--misk-green);
+
+  filter:
+    drop-shadow(0 0 6px var(--glow-mid))
+    drop-shadow(0 0 14px var(--glow-strong))
+    drop-shadow(0 0 24px var(--misk-green));
+}
+
+/* -------------------------------------------------------------
+   HOLOGRAM SHIMMER EFFECT
+------------------------------------------------------------- */
+.icon-badge .sketch-icon {
+  --shimmer-speed: 3s;
+
+  animation: hologram-shimmer var(--shimmer-speed) linear infinite;
+}
+
+@keyframes hologram-shimmer {
+  0% { opacity: 0.9; filter: drop-shadow(0 0 10px var(--glow-mid)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 24px var(--glow-strong)); }
+  100% { opacity: 0.9; filter: drop-shadow(0 0 10px var(--glow-mid)); }
+}
+
+/* -------------------------------------------------------------
+   ENERGY RINGS AROUND BADGES
+------------------------------------------------------------- */
+.icon-badge::before {
+  content: "";
+  position: absolute;
+  width: 130%;
+  height: 130%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+
+  border: 2px solid var(--glow-mid);
+  opacity: 0.35;
+
+  animation: energy-ring 4s ease-in-out infinite;
+}
+
+@keyframes energy-ring {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 25px var(--glow-mid);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.07);
+    box-shadow: 0 0 40px var(--glow-strong);
+  }
+}
+
+/* -------------------------------------------------------------
+   HOVER: INTENSE HOLOGRAM MODE
+------------------------------------------------------------- */
+.icon-badge:hover {
+  transform: scale(1.2);
+
+  box-shadow:
+    0 0 25px var(--glow-mid),
+    0 0 65px var(--glow-strong),
+    0 0 95px var(--misk-green);
+}
+
+.icon-badge:hover .sketch-icon {
+  transform: scale(1.15);
+
+  filter:
+    drop-shadow(0 0 14px var(--glow-strong))
+    drop-shadow(0 0 30px var(--misk-green))
+    drop-shadow(0 0 45px var(--misk-green));
+}
+
+/* -------------------------------------------------------------
+   FUTURISTIC RIPPLE ON HOVER (WAVE EFFECT)
+------------------------------------------------------------- */
+.icon-badge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--glow-strong);
+  opacity: 0;
+  transform: scale(1);
+  pointer-events: none;
+}
+
+.icon-badge:hover::after {
+  animation: ripple 0.9s ease-out;
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* -------------------------------------------------------------
+   SOFT PULSE FOR CONSTANT ENERGY
+------------------------------------------------------------- */
+.icon-badge-pulse {
+  animation: badge-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 25px var(--glow-weak),
+      0 0 35px var(--glow-mid);
+  }
+  50% {
+    box-shadow:
+      0 0 35px var(--glow-mid),
+      0 0 60px var(--glow-strong);
+  }
+}
+
+/* -------------------------------------------------------------
+   RESPONSIVE
+------------------------------------------------------------- */
 @media (max-width: 768px) {
   .icon-badge {
     width: 70px !important;
     height: 70px !important;
-    font-size: 28px !important;
+  }
+  .icon-badge .sketch-icon {
+    width: 32px;
+    height: 32px;
   }
 }
 
@@ -47,16 +180,9 @@ text {
   .icon-badge {
     width: 60px !important;
     height: 60px !important;
-    font-size: 24px !important;
   }
-}
-
-/* Glow animation */
-@keyframes glow-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.1)) drop-shadow(0 0 40px rgba(2, 102, 75, 0.05));
-  }
-  50% {
-    filter: drop-shadow(0 0 30px rgba(0, 0, 0, 0.15)) drop-shadow(0 0 60px rgba(2, 102, 75, 0.15));
+  .icon-badge .sketch-icon {
+    width: 28px;
+    height: 28px;
   }
 }

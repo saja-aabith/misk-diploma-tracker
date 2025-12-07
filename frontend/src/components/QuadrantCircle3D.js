@@ -1,30 +1,31 @@
 import React from 'react';
 import './QuadrantCircle.css';
+import { GraduationCap, Briefcase, Flag, Crown } from 'lucide-react';
 
 function QuadrantCircle3D({ size = 500 }) {
   const quadrants = [
     { 
       name: 'Academic', 
       color: '#E74C3C',
-      icon: '🎓',
+      icon: <GraduationCap className="sketch-icon" size={40} />,
       label: '(AP)'
     },
     { 
       name: 'Internship', 
       color: '#9B59B6',
-      icon: '⚙️',
+      icon: <Briefcase className="sketch-icon" size={40} />,
       label: ''
     },
     { 
       name: 'National Identity', 
       color: '#2ECC71',
-      icon: '🇸🇦',
+      icon: <Flag className="sketch-icon" size={40} />,
       label: ''
     },
     { 
       name: 'Leadership', 
       color: '#F39C12',
-      icon: '🏛️',
+      icon: <Crown className="sketch-icon" size={40} />,
       label: ''
     }
   ];
@@ -35,7 +36,8 @@ function QuadrantCircle3D({ size = 500 }) {
     position: 'relative',
     margin: '0 auto',
     zIndex: 10,
-    filter: 'drop-shadow(0 0 30px rgba(0, 0, 0, 0.15)) drop-shadow(0 0 60px rgba(2, 102, 75, 0.1))'
+    filter:
+      'drop-shadow(0 0 30px rgba(0, 0, 0, 0.15)) drop-shadow(0 0 60px rgba(2, 102, 75, 0.1))',
   };
 
   const iconBadgeStyle = (color) => ({
@@ -52,7 +54,7 @@ function QuadrantCircle3D({ size = 500 }) {
     fontSize: '36px',
     transition: 'all 0.3s ease',
     cursor: 'pointer',
-    zIndex: 20
+    zIndex: 20,
   });
 
   return (
@@ -64,17 +66,17 @@ function QuadrantCircle3D({ size = 500 }) {
             <stop offset="0%" style={{ stopColor: '#E74C3C', stopOpacity: 1 }} />
             <stop offset="100%" style={{ stopColor: '#C0392B', stopOpacity: 1 }} />
           </linearGradient>
-          
+
           <linearGradient id="internshipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" style={{ stopColor: '#9B59B6', stopOpacity: 1 }} />
             <stop offset="100%" style={{ stopColor: '#8E44AD', stopOpacity: 1 }} />
           </linearGradient>
-          
+
           <linearGradient id="identityGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" style={{ stopColor: '#2ECC71', stopOpacity: 1 }} />
             <stop offset="100%" style={{ stopColor: '#27AE60', stopOpacity: 1 }} />
           </linearGradient>
-          
+
           <linearGradient id="leadershipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" style={{ stopColor: '#F39C12', stopOpacity: 1 }} />
             <stop offset="100%" style={{ stopColor: '#E67E22', stopOpacity: 1 }} />
@@ -82,69 +84,65 @@ function QuadrantCircle3D({ size = 500 }) {
 
           {/* Enhanced Glow filter */}
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+            <feGaussianBlur stdDeviation="8" result="coloredBlur" />
             <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
 
           {/* Stronger outer glow */}
           <filter id="outerGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
-            <feOffset dx="0" dy="0" result="offsetblur"/>
+            <feGaussianBlur in="SourceAlpha" stdDeviation="10" />
+            <feOffset dx="0" dy="0" result="offsetblur" />
             <feComponentTransfer>
-              <feFuncA type="linear" slope="0.8"/>
+              <feFuncA type="linear" slope="0.8" />
             </feComponentTransfer>
             <feMerge>
-              <feMergeNode/>
-              <feMergeNode in="SourceGraphic"/>
+              <feMergeNode />
+              <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
 
           {/* Shadow filter */}
           <filter id="shadow">
-            <feDropShadow dx="0" dy="6" stdDeviation="10" floodOpacity="0.25"/>
+            <feDropShadow dx="0" dy="6" stdDeviation="10" floodOpacity="0.25" />
           </filter>
 
           {/* Curved text paths for each quadrant */}
-          {/* Academic path - curves from top to right */}
-          <path 
-            id="academicPath" 
-            d="M 250 95 A 155 155 0 0 1 405 250" 
+          <path
+            id="academicPath"
+            d="M 250 95 A 155 155 0 0 1 405 250"
             fill="none"
           />
-          
-          {/* Internship path - curves from right to bottom */}
-          <path 
-            id="internshipPath" 
-            d="M 405 250 A 155 155 0 0 1 250 405" 
+
+          <path
+            id="internshipPath"
+            d="M 405 250 A 155 155 0 0 1 250 405"
             fill="none"
           />
-          
-          {/* National Identity path - curves from bottom to left */}
-          <path 
-            id="identityPath" 
-            d="M 250 405 A 155 155 0 0 1 95 250" 
+
+          <path
+            id="identityPath"
+            d="M 250 405 A 155 155 0 0 1 95 250"
             fill="none"
           />
-          
-          {/* Leadership path - curves from left to top */}
-          <path 
-            id="leadershipPath" 
-            d="M 95 250 A 155 155 0 0 1 250 95" 
+
+          <path
+            id="leadershipPath"
+            d="M 95 250 A 155 155 0 0 1 250 95"
             fill="none"
           />
         </defs>
 
         {/* Outer glow circle */}
-        <circle 
-          cx="250" 
-          cy="250" 
-          r="200" 
-          fill="none" 
-          stroke="rgba(2, 102, 75, 0.2)" 
+        <circle
+          cx="250"
+          cy="250"
+          r="200"
+          fill="none"
+          stroke="rgba(2, 102, 75, 0.2)"
           strokeWidth="8"
           opacity="0.5"
           filter="url(#outerGlow)"
@@ -183,11 +181,9 @@ function QuadrantCircle3D({ size = 500 }) {
         />
 
         {/* Curved text labels */}
-        
-        {/* Academic - curved along top arc */}
-        <text 
-          fill="white" 
-          fontSize="18" 
+        <text
+          fill="white"
+          fontSize="18"
           fontWeight="bold"
           letterSpacing="2"
           style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}
@@ -197,10 +193,9 @@ function QuadrantCircle3D({ size = 500 }) {
           </textPath>
         </text>
 
-        {/* Internship - curved along right arc */}
-        <text 
-          fill="white" 
-          fontSize="18" 
+        <text
+          fill="white"
+          fontSize="18"
           fontWeight="bold"
           letterSpacing="2"
           style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}
@@ -210,10 +205,9 @@ function QuadrantCircle3D({ size = 500 }) {
           </textPath>
         </text>
 
-        {/* National Identity - curved along bottom arc */}
-        <text 
-          fill="white" 
-          fontSize="16" 
+        <text
+          fill="white"
+          fontSize="16"
           fontWeight="bold"
           letterSpacing="1"
           style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}
@@ -223,10 +217,9 @@ function QuadrantCircle3D({ size = 500 }) {
           </textPath>
         </text>
 
-        {/* Leadership - curved along left arc */}
-        <text 
-          fill="white" 
-          fontSize="18" 
+        <text
+          fill="white"
+          fontSize="18"
           fontWeight="bold"
           letterSpacing="2"
           style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}
@@ -237,32 +230,26 @@ function QuadrantCircle3D({ size = 500 }) {
         </text>
 
         {/* Center white circle with enhanced shadow */}
-        <circle 
-          cx="250" 
-          cy="250" 
-          r="95" 
-          fill="white" 
-          filter="url(#shadow)"
-        />
+        <circle cx="250" cy="250" r="95" fill="white" filter="url(#shadow)" />
 
         {/* Center text */}
-        <text 
-          x="250" 
-          y="235" 
-          textAnchor="middle" 
-          fill="#666" 
-          fontSize="18" 
+        <text
+          x="250"
+          y="235"
+          textAnchor="middle"
+          fill="#666"
+          fontSize="18"
           fontWeight="500"
           letterSpacing="0.5"
         >
           Misk Schools
         </text>
-        <text 
-          x="250" 
-          y="260" 
-          textAnchor="middle" 
-          fill="#02664b" 
-          fontSize="22" 
+        <text
+          x="250"
+          y="260"
+          textAnchor="middle"
+          fill="#02664b"
+          fontSize="22"
           fontWeight="bold"
         >
           Diploma
@@ -271,24 +258,26 @@ function QuadrantCircle3D({ size = 500 }) {
 
       {/* Icon badges around the circle with enhanced glow */}
       {/* Academic - Top */}
-      <div 
+      <div
         style={{
           ...iconBadgeStyle(quadrants[0].color),
           top: '-15px',
           left: '50%',
-          transform: 'translateX(-50%)'
+          transform: 'translateX(-50%)',
         }}
         className="icon-badge icon-badge-pulse"
       >
         <div style={{ textAlign: 'center' }}>
           <div>{quadrants[0].icon}</div>
           {quadrants[0].label && (
-            <div style={{ 
-              fontSize: '10px', 
-              color: quadrants[0].color, 
-              fontWeight: 'bold',
-              marginTop: '2px'
-            }}>
+            <div
+              style={{
+                fontSize: '10px',
+                color: quadrants[0].color,
+                fontWeight: 'bold',
+                marginTop: '2px',
+              }}
+            >
               {quadrants[0].label}
             </div>
           )}
@@ -296,12 +285,12 @@ function QuadrantCircle3D({ size = 500 }) {
       </div>
 
       {/* Internship - Right */}
-      <div 
+      <div
         style={{
           ...iconBadgeStyle(quadrants[1].color),
           top: '50%',
           right: '-15px',
-          transform: 'translateY(-50%)'
+          transform: 'translateY(-50%)',
         }}
         className="icon-badge icon-badge-pulse"
       >
@@ -309,12 +298,12 @@ function QuadrantCircle3D({ size = 500 }) {
       </div>
 
       {/* National Identity - Bottom */}
-      <div 
+      <div
         style={{
           ...iconBadgeStyle(quadrants[2].color),
           bottom: '-15px',
           left: '50%',
-          transform: 'translateX(-50%)'
+          transform: 'translateX(-50%)',
         }}
         className="icon-badge icon-badge-pulse"
       >
@@ -322,12 +311,12 @@ function QuadrantCircle3D({ size = 500 }) {
       </div>
 
       {/* Leadership - Left */}
-      <div 
+      <div
         style={{
           ...iconBadgeStyle(quadrants[3].color),
           top: '50%',
           left: '-15px',
-          transform: 'translateY(-50%)'
+          transform: 'translateY(-50%)',
         }}
         className="icon-badge icon-badge-pulse"
       >
