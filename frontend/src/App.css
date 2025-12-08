@@ -1,4 +1,3 @@
-
 /* Add this to the top of your existing App.css */
 
 /* Subtle background pattern */
@@ -19,18 +18,11 @@ body::before {
 
 /* Rest of your existing CSS... */
 
-
-
-
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
-
-
-
-
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -349,6 +341,201 @@ body {
 .progress-fill {
   height: 100%;
   transition: width 0.3s ease;
+}
+
+/* === Modern pillar cards + meters (StudentDashboard) === */
+
+.quadrant-info--modern {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+  margin-top: 26px;
+}
+
+.quadrant-card--modern {
+  border-radius: 18px;
+  border-left-width: 6px;
+  border-left-style: solid;
+  background: #fafbff;
+  padding: 16px 16px 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.quadrant-card--modern:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.09);
+}
+
+.quadrant-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.quadrant-card-header h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.quadrant-card-subtitle {
+  font-size: 12px;
+  color: #7b8ca0;
+  margin-top: 2px;
+}
+
+.quadrant-chip-percent {
+  --pillar-color: #02664b;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--pillar-color) 60%, #ffffff 40%),
+    var(--pillar-color)
+  );
+  box-shadow: 0 0 16px color-mix(in srgb, var(--pillar-color) 40%, #000000 60%);
+}
+
+/* Futuristic meter for pillars */
+.pillar-meter {
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.pillar-meter-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #edf1f6, #e2e8f0);
+  overflow: hidden;
+}
+
+.pillar-meter-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--pillar-color) 55%, #ffffff 45%),
+    var(--pillar-color)
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--pillar-color) 45%, #000 55%);
+  transition: width 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* Little thumb showing % */
+.pillar-meter-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--pillar-color) 60%, #ffffff 40%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pillar-color);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  white-space: nowrap;
+}
+
+/* Overall meter at top of card */
+.card-header-inline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.overall-meter {
+  text-align: right;
+  min-width: 220px;
+}
+
+.overall-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7b8ca0;
+}
+
+.overall-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f3750;
+}
+
+.overall-bar {
+  position: relative;
+  height: 8px;
+  margin-top: 6px;
+}
+
+.overall-bar-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #e3edf7;
+}
+
+.overall-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0fb989, #02664b);
+  box-shadow: 0 0 10px rgba(2, 102, 75, 0.65);
+  transition: width 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* Objective meters */
+.objective-meter {
+  position: relative;
+  height: 10px;
+  margin: 10px 0 6px;
+}
+
+.objective-meter-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+.objective-meter-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--objective-color) 55%, #ffffff 45%),
+    var(--objective-color)
+  );
+  box-shadow: 0 0 8px color-mix(in srgb, var(--objective-color) 45%, #000 55%);
+  transition: width 0.6s ease-out;
+}
+
+.objective-meter-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid var(--objective-color);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2),
+    0 0 15px color-mix(in srgb, var(--objective-color) 40%, #000 60%);
 }
 
 /* Objectives List */
@@ -751,6 +938,17 @@ textarea:focus {
   }
   
   .filter-bar select {
+    width: 100%;
+  }
+
+  .card-header-inline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .overall-meter {
+    text-align: left;
+    min-width: 0;
     width: 100%;
   }
 }

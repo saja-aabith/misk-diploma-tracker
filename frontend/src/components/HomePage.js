@@ -159,8 +159,7 @@ const HomePage = () => {
       <main className="hero">
         <div className="container">
           <h1>MISK Diploma Tracker</h1>
-          <p>Track your journey across four pillars of excellence</p>
-
+          <p>Track your journey to excellence</p>
           <div className="canvas-container">
             <QuadrantCircle3D size={500} />
           </div>

@@ -4,6 +4,91 @@ import { getUser, logout } from '../utils/auth';
 import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
 
+/**
+ * Helper: clamp any % between 0 and 100
+ */
+const clampPercent = (value) => {
+  const num = Number(value) || 0;
+  return Math.max(0, Math.min(num, 100));
+};
+
+/**
+ * Futuristic horizontal meter for a quadrant / pillar
+ */
+const PillarProgressCard = ({ quadrant, onClick }) => {
+  const pct = clampPercent(quadrant.completion_percentage);
+
+  return (
+    <div
+      className="quadrant-card quadrant-card--modern"
+      style={{ borderLeftColor: quadrant.color }}
+      onClick={onClick}
+    >
+      <div className="quadrant-card-header">
+        <div>
+          <h4>{quadrant.name}</h4>
+          <div className="quadrant-card-subtitle">
+            {quadrant.objectives_completed} of {quadrant.total_objectives} completed
+          </div>
+        </div>
+        <div
+          className="quadrant-chip-percent"
+          style={{ '--pillar-color': quadrant.color }}
+        >
+          {pct.toFixed(1)}%
+        </div>
+      </div>
+
+      <div className="pillar-meter">
+        <div className="pillar-meter-track" />
+        <div
+          className="pillar-meter-fill"
+          style={{
+            '--pillar-color': quadrant.color,
+            width: `${pct}%`,
+          }}
+        />
+        <div
+          className="pillar-meter-thumb"
+          style={{
+            '--pillar-color': quadrant.color,
+            left: `${pct}%`,
+          }}
+        >
+          <span>{Math.round(pct)}%</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Futuristic meter for an individual objective
+ */
+const ObjectiveProgressMeter = ({ percent, color }) => {
+  const pct = clampPercent(percent);
+
+  return (
+    <div className="objective-meter">
+      <div className="objective-meter-track" />
+      <div
+        className="objective-meter-fill"
+        style={{
+          '--objective-color': color,
+          width: `${pct}%`,
+        }}
+      />
+      <div
+        className="objective-meter-dot"
+        style={{
+          '--objective-color': color,
+          left: `${pct}%`,
+        }}
+      />
+    </div>
+  );
+};
+
 function StudentDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [objectives, setObjectives] = useState([]);
@@ -20,6 +105,7 @@ function StudentDashboard() {
     loadDashboard();
     loadObjectives();
     loadSubmissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadDashboard = async () => {
@@ -64,13 +150,17 @@ function StudentDashboard() {
   const handleUploadSuccess = () => {
     setShowUploadModal(false);
     loadDashboard();
-    loadObjectives(selectedQuadrant?.id);
+    if (selectedQuadrant?.id) {
+      loadObjectives(selectedQuadrant.id);
+    }
     loadSubmissions();
   };
 
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
+
+  const overallPct = clampPercent(dashboardData?.overall_completion_percentage);
 
   return (
     <div className="dashboard">
@@ -81,20 +171,22 @@ function StudentDashboard() {
               <h2>{dashboardData?.student_name}</h2>
               <p>Student Dashboard</p>
             </div>
-            <button onClick={logout} className="btn-logout">Logout</button>
+            <button onClick={logout} className="btn-logout">
+              Logout
+            </button>
           </div>
         </div>
       </header>
 
       <div className="container">
         <div className="tabs">
-          <button 
+          <button
             className={`tab ${activeTab === 'progress' ? 'active' : ''}`}
             onClick={() => setActiveTab('progress')}
           >
             My Progress
           </button>
-          <button 
+          <button
             className={`tab ${activeTab === 'submissions' ? 'active' : ''}`}
             onClick={() => setActiveTab('submissions')}
           >
@@ -105,46 +197,49 @@ function StudentDashboard() {
         {activeTab === 'progress' && (
           <>
             <div className="card">
-              <h3>Your Diploma Progress</h3>
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
-                <QuadrantCircle3D size={400} />
-              </div>
-              <div style={{ textAlign: 'center', fontSize: '24px', fontWeight: 'bold', color: '#2c3e50' }}>
-                Overall Completion: {dashboardData?.overall_completion_percentage}%
+              <div className="card-header-inline">
+                <h3>Your Diploma Progress</h3>
+
+                {/* Overall completion pill + subtle meter */}
+                <div className="overall-meter">
+                  <span className="overall-label">Overall completion</span>
+                  <span className="overall-value">
+                    {overallPct.toFixed(1)}%
+                  </span>
+                  <div className="overall-bar">
+                    <div className="overall-bar-track" />
+                    <div
+                      className="overall-bar-fill"
+                      style={{ width: `${overallPct}%` }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="quadrant-info">
-                {dashboardData?.quadrants.map((quadrant) => (
-                  <div
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  margin: '26px 0 10px',
+                }}
+              >
+                <QuadrantCircle3D size={400} />
+              </div>
+
+              <div className="quadrant-info quadrant-info--modern">
+                {(dashboardData?.quadrants || []).map((quadrant) => (
+                  <PillarProgressCard
                     key={quadrant.id}
-                    className="quadrant-card"
-                    style={{ borderLeftColor: quadrant.color }}
+                    quadrant={quadrant}
                     onClick={() => handleQuadrantClick(quadrant)}
-                  >
-                    <h4>{quadrant.name}</h4>
-                    <div className="completion" style={{ color: quadrant.color }}>
-                      {quadrant.completion_percentage}%
-                    </div>
-                    <div className="progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${quadrant.completion_percentage}%`,
-                          background: quadrant.color,
-                        }}
-                      />
-                    </div>
-                    <div className="progress-text">
-                      {quadrant.objectives_completed} of {quadrant.total_objectives} completed
-                    </div>
-                  </div>
+                  />
                 ))}
               </div>
             </div>
 
             {selectedQuadrant && objectives.length > 0 && (
               <div className="card">
-                <h3>{selectedQuadrant.name} - Objectives</h3>
+                <h3>{selectedQuadrant.name} – Objectives</h3>
                 <div className="objectives-list">
                   {objectives.map((objective) => (
                     <div
@@ -154,24 +249,33 @@ function StudentDashboard() {
                     >
                       <div className="objective-header">
                         <div className="objective-title">{objective.title}</div>
-                        <span className={`status-badge status-${objective.status}`}>
+                        <span
+                          className={`status-badge status-${objective.status}`}
+                        >
                           {objective.status.replace('_', ' ')}
                         </span>
                       </div>
-                      <div className="objective-description">{objective.description}</div>
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{
-                            width: `${objective.completion_percentage}%`,
-                            background: selectedQuadrant.color,
-                          }}
-                        />
+
+                      <div className="objective-description">
+                        {objective.description}
                       </div>
+
+                      <ObjectiveProgressMeter
+                        percent={objective.completion_percentage}
+                        color={selectedQuadrant.color}
+                      />
+
                       <div className="objective-stats">
-                        <span>{objective.current_points}/{objective.max_points} points</span>
-                        <span>{objective.submission_count} submissions, {objective.approved_count} approved</span>
+                        <span>
+                          {objective.current_points}/{objective.max_points}{' '}
+                          points
+                        </span>
+                        <span>
+                          {objective.submission_count} submissions,{' '}
+                          {objective.approved_count} approved
+                        </span>
                       </div>
+
                       <button
                         className="btn-upload"
                         onClick={() => handleUploadClick(objective)}
@@ -193,19 +297,28 @@ function StudentDashboard() {
               {submissions.map((submission) => (
                 <div key={submission.id} className="submission-card">
                   <div className="submission-header">
-                    <div className="submission-title">{submission.objective_title}</div>
-                    <span className={`status-badge status-${submission.status}`}>
+                    <div className="submission-title">
+                      {submission.objective_title}
+                    </div>
+                    <span
+                      className={`status-badge status-${submission.status}`}
+                    >
                       {submission.status.replace('_', ' ')}
                     </span>
                   </div>
                   <div className="submission-meta">
-                    {submission.quadrant_name} • {new Date(submission.submission_date).toLocaleDateString()}
+                    {submission.quadrant_name} •{' '}
+                    {new Date(
+                      submission.submission_date
+                    ).toLocaleDateString()}
                   </div>
                   <div className="submission-meta">
                     File: {submission.file_name}
                   </div>
                   {submission.description && (
-                    <div className="submission-meta">Description: {submission.description}</div>
+                    <div className="submission-meta">
+                      Description: {submission.description}
+                    </div>
                   )}
                   {submission.reviews.length > 0 && (
                     <div className="reviews-section">
@@ -214,11 +327,22 @@ function StudentDashboard() {
                         <div key={review.id} className="review-item">
                           <div className="review-header">
                             <span>{review.teacher_name}</span>
-                            <span className="rating">{'★'.repeat(review.rating)}</span>
+                            <span className="rating">
+                              {'★'.repeat(review.rating)}
+                            </span>
                           </div>
                           <div>{review.feedback}</div>
-                          <div style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '4px' }}>
-                            {review.decision.toUpperCase()} • {new Date(review.reviewed_at).toLocaleDateString()}
+                          <div
+                            style={{
+                              fontSize: '12px',
+                              color: '#7f8c8d',
+                              marginTop: '4px',
+                            }}
+                          >
+                            {review.decision.toUpperCase()} •{' '}
+                            {new Date(
+                              review.reviewed_at
+                            ).toLocaleDateString()}
                           </div>
                         </div>
                       ))}

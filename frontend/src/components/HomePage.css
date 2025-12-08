@@ -1,44 +1,319 @@
-/* Education background for entire homepage */
+:root {
+  --misk-green: #02664b;
+  --misk-dark: #024131;
+}
+
+/* -------------------------------------------------------
+   PAGE + HERO BACKGROUND
+------------------------------------------------------- */
+
+.home-page {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% -10%, #b9ffe9 0, transparent 45%),
+    radial-gradient(circle at 80% 110%, #9cf0d1 0, transparent 55%),
+    radial-gradient(circle at 50% 20%, #e6fff7 0, transparent 50%),
+    linear-gradient(135deg, #2ac98b 0%, #0f7c56 40%, #074534 100%);
+  color: #073529;
+  overflow-x: hidden;
+}
+
+/* Full-page floating educational icons behind content */
 .education-background-full {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   pointer-events: none;
   z-index: 1;
   overflow: hidden;
 }
 
-/* Floating educational icons */
+/* Floating background icons (lucide) */
 .education-background-full .floating-icon {
   position: absolute;
-  font-size: 56px;
-  opacity: 0.12;
-  animation: float 8s ease-in-out infinite;
+  opacity: 0.16;
+  animation: float 10s ease-in-out infinite;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.08));
 }
 
+/* Thin outlined icons for background */
+.bg-icon {
+  stroke-width: 1.6;
+  opacity: 0.18;
+}
+
+/* Float animation */
 @keyframes float {
   0%, 100% {
     transform: translateY(0px) rotate(0deg);
-    opacity: 0.08;
+    opacity: 0.10;
   }
   25% {
-    transform: translateY(-30px) rotate(5deg);
-    opacity: 0.12;
+    transform: translateY(-25px) rotate(4deg);
+    opacity: 0.16;
   }
   50% {
-    transform: translateY(-50px) rotate(-5deg);
-    opacity: 0.15;
+    transform: translateY(-45px) rotate(-4deg);
+    opacity: 0.2;
   }
   75% {
-    transform: translateY(-30px) rotate(3deg);
-    opacity: 0.12;
+    transform: translateY(-25px) rotate(2deg);
+    opacity: 0.16;
   }
 }
 
-/* Button container styling */
+/* -------------------------------------------------------
+   HEADER
+------------------------------------------------------- */
+
+/* -------------------------------------------------------
+   FUTURISTIC GLASS HEADER
+------------------------------------------------------- */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background:
+    radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.18), transparent 55%),
+    linear-gradient(
+      to right,
+      rgba(3, 58, 43, 0.96),
+      rgba(4, 90, 64, 0.96),
+      rgba(3, 58, 43, 0.96)
+    );
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.header .container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 24px;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Brand on the left */
+.logo {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #eafff6;
+}
+
+/* Optional right-side pills (can use later if you add nav links) */
+.header-actions {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(234, 255, 247, 0.8);
+}
+
+.header-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+/* -------------------------------------------------------
+   HERO SECTION
+------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  z-index: 3;
+  padding: 70px 0 140px;
+  text-align: center;
+  overflow: hidden;
+}
+
+/* Futuristic grid + light blob overlay */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.45;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), transparent 70%);
+  top: -150px;
+  left: 50%;
+  transform: translateX(-50%);
+  filter: blur(4px);
+  opacity: 0.6;
+  animation: hero-blob 16s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes hero-blob {
+  0% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  50% {
+    transform: translateX(-45%) translateY(40px) scale(1.1);
+  }
+  100% {
+    transform: translateX(-55%) translateY(-10px) scale(1.05);
+  }
+}
+
+.hero .container {
+  position: relative;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+  z-index: 2;
+}
+
+.hero h1 {
+  font-size: 42px;
+  line-height: 1.1;
+  margin-bottom: 10px;
+  color: #073529;
+}
+
+.hero p {
+  font-size: 18px;
+  margin: 0 0 30px;
+  color: #0c513b;
+}
+
+/* -------------------------------------------------------
+   ORBIT LAYOUT AROUND QUADRANT CIRCLE
+------------------------------------------------------- */
+
+.hero-orbit {
+  position: relative;
+  margin-top: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-container {
+  position: relative;
+  z-index: 2;
+}
+
+/* Glassmorphism info chips around the circle */
+.hero-orbit-card {
+  position: absolute;
+  width: 220px;
+  max-width: 32vw;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.15),
+    0 0 30px rgba(2, 102, 75, 0.25);
+  color: #053024;
+  transform-origin: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.hero-orbit-card h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #024b37;
+}
+
+.hero-orbit-card p {
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Positions */
+.hero-orbit-card--top {
+  top: -10px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+}
+
+.hero-orbit-card--left {
+  left: -30px;
+  top: 48%;
+  transform: translate(-100%, -50%);
+}
+
+.hero-orbit-card--right {
+  right: -30px;
+  top: 48%;
+  transform: translate(100%, -50%);
+}
+
+.hero-orbit-card--bottom {
+  bottom: -10px;
+  left: 50%;
+  transform: translate(-50%, 100%);
+}
+
+/* Hover behaviour */
+.hero-orbit-card--top:hover {
+  transform: translate(-50%, -100%) translateY(-4px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.25),
+    0 0 50px rgba(2, 102, 75, 0.45);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.hero-orbit-card--left:hover {
+  transform: translate(-100%, -50%) translateX(-4px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.25),
+    0 0 50px rgba(2, 102, 75, 0.45);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.hero-orbit-card--right:hover {
+  transform: translate(100%, -50%) translateX(4px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.25),
+    0 0 50px rgba(2, 102, 75, 0.45);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.hero-orbit-card--bottom:hover {
+  transform: translate(-50%, 100%) translateY(4px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.25),
+    0 0 50px rgba(2, 102, 75, 0.45);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+/* -------------------------------------------------------
+   BUTTONS
+------------------------------------------------------- */
+
 .button-container {
   display: flex;
   gap: 24px;
@@ -62,13 +337,16 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
+  background: #0f6247;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  animation: pulse-glow 3s ease-in-out infinite;
 }
 
 .button-container .btn::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -96,7 +374,6 @@
 
 .button-container .btn-primary {
   background: linear-gradient(135deg, #02664b 0%, #024d38 100%);
-  color: rgb(255, 255, 255);
 }
 
 .button-container .btn-primary:hover {
@@ -106,7 +383,6 @@
 
 .button-container .btn-secondary {
   background: linear-gradient(135deg, #038a63 0%, #02664b 100%);
-  color: white;
 }
 
 .button-container .btn-secondary:hover {
@@ -114,28 +390,45 @@
   box-shadow: 0 8px 20px rgba(3, 138, 99, 0.4);
 }
 
-/* Ensure content is above background */
-.home-page {
-  position: relative;
-  z-index: 2;
-}
-
-.header {
-  position: relative;
-  z-index: 10;
-}
-
-.hero {
-  position: relative;
-  z-index: 10;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .education-background-full .floating-icon {
-    font-size: 40px;
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
+  50% {
+    box-shadow: 0 4px 20px rgba(2, 102, 75, 0.35);
+  }
+}
 
+/* -------------------------------------------------------
+   FOOTER
+------------------------------------------------------- */
+
+.footer {
+  position: relative;
+  z-index: 3;
+  padding: 24px 0 40px;
+  text-align: center;
+  color: #e4fff7;
+  font-size: 13px;
+}
+
+.footer .container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* -------------------------------------------------------
+   RESPONSIVE
+------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .hero-orbit-card {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
   .button-container {
     flex-direction: column;
     gap: 16px;
@@ -149,39 +442,13 @@
 }
 
 @media (max-width: 480px) {
-  .education-background-full .floating-icon {
-    font-size: 32px;
-  }
-  
   .button-container .btn {
     min-width: 180px;
     padding: 14px 24px;
     font-size: 16px;
   }
-  
+
   .btn-icon {
     font-size: 20px;
   }
-}
-
-/* Pulse animation for buttons */
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(2, 102, 75, 0.3);
-  }
-}
-
-.button-container .btn {
-  animation: pulse-glow 3s ease-in-out infinite;
-}
-
-.sketch-icon {
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.9;
-  filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.4));
 }
