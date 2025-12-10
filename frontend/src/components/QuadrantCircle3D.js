@@ -4,49 +4,62 @@ import { BookOpenCheck, BriefcaseBusiness, Landmark, Mountain } from 'lucide-rea
 
 function QuadrantCircle3D({ size = 500 }) {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [hoveredQuadrant, setHoveredQuadrant] = useState(null);
 
-    const quadrants = [
-    { 
-        name: 'Academic', 
-        color: '#E74C3C',
-        icon: <BookOpenCheck className="sketch-icon" size={40} />,
-        label: ''   // removed (AP)
+  const quadrants = [
+    {
+      name: 'Academic',
+      color: '#E74C3C',
+      icon: <BookOpenCheck className="sketch-icon" size={40} />,
+      label: '',
+      side: 'top',
+      tooltip:
+        'IGCSE, IAL, national exams (NAFS G6/G9, Qudrat, Tahsili) and EPQ-style research projects.'
     },
-    { 
-        name: 'Internship', 
-        color: '#9B59B6',
-        icon: <BriefcaseBusiness className="sketch-icon" size={40} />,
-        label: ''
+    {
+      name: 'Internship',
+      color: '#9B59B6',
+      icon: <BriefcaseBusiness className="sketch-icon" size={40} />,
+      label: '',
+      side: 'right',
+      tooltip:
+        'Industry internship reports and multi-year career planning towards your future pathways.'
     },
-    { 
-        name: 'National Identity', 
-        color: '#2ECC71',
-        icon: <Landmark className="sketch-icon" size={40} />,
-        label: ''
+    {
+      name: 'National Identity',
+      color: '#2ECC71',
+      icon: <Landmark className="sketch-icon" size={40} />,
+      label: '',
+      side: 'bottom',
+      tooltip:
+        'Arabic language development and deep engagement with Saudi national heritage and culture.'
     },
-    { 
-        name: 'Leadership', 
-        color: '#F39C12',
-        icon: <Mountain className="sketch-icon" size={40} />,
-        label: ''
+    {
+      name: 'Leadership',
+      color: '#F39C12',
+      icon: <Mountain className="sketch-icon" size={40} />,
+      label: '',
+      side: 'left',
+      tooltip:
+        'CMI-linked leadership competencies and advanced presentation skills in real projects.'
     }
-    ];
-
+  ];
 
   const handleMouseMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;  // -0.5 to 0.5
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
     const y = (e.clientY - rect.top) / rect.height - 0.5;
-    const maxTilt = 10; // degrees
+    const maxTilt = 10;
 
     setTilt({
-      x: y * maxTilt,      // tilt X based on vertical movement
-      y: -x * maxTilt      // tilt Y based on horizontal movement
+      x: y * maxTilt,
+      y: -x * maxTilt
     });
   };
 
   const handleMouseLeave = () => {
     setTilt({ x: 0, y: 0 });
+    setHoveredQuadrant(null);
   };
 
   const containerStyle = {
@@ -59,7 +72,7 @@ function QuadrantCircle3D({ size = 500 }) {
       'drop-shadow(0 0 30px rgba(0, 0, 0, 0.15)) drop-shadow(0 0 60px rgba(2, 102, 75, 0.1))',
     transformStyle: 'preserve-3d',
     transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-    transition: 'transform 0.25s ease-out',
+    transition: 'transform 0.25s ease-out'
   };
 
   const iconBadgeStyle = (color) => ({
@@ -77,6 +90,7 @@ function QuadrantCircle3D({ size = 500 }) {
     transition: 'all 0.3s ease',
     cursor: 'pointer',
     zIndex: 20,
+    color
   });
 
   return (
@@ -144,26 +158,10 @@ function QuadrantCircle3D({ size = 500 }) {
             </filter>
 
             {/* Curved text paths */}
-            <path
-              id="academicPath"
-              d="M 250 95 A 155 155 0 0 1 405 250"
-              fill="none"
-            />
-            <path
-              id="internshipPath"
-              d="M 405 250 A 155 155 0 0 1 250 405"
-              fill="none"
-            />
-            <path
-              id="identityPath"
-              d="M 250 405 A 155 155 0 0 1 95 250"
-              fill="none"
-            />
-            <path
-              id="leadershipPath"
-              d="M 95 250 A 155 155 0 0 1 250 95"
-              fill="none"
-            />
+            <path id="academicPath" d="M 250 95 A 155 155 0 0 1 405 250" fill="none" />
+            <path id="internshipPath" d="M 405 250 A 155 155 0 0 1 250 405" fill="none" />
+            <path id="identityPath" d="M 250 405 A 155 155 0 0 1 95 250" fill="none" />
+            <path id="leadershipPath" d="M 95 250 A 155 155 0 0 1 250 95" fill="none" />
           </defs>
 
           {/* Hologram circuit layer behind everything */}
@@ -211,30 +209,38 @@ function QuadrantCircle3D({ size = 500 }) {
             filter="url(#outerGlow)"
           />
 
-          {/* Quadrant segments */}
+          {/* Quadrant segments with hover handlers */}
           <path
             d="M 250 250 L 250 60 A 190 190 0 0 1 440 250 Z"
             fill="url(#academicGrad)"
             filter="url(#glow)"
             className="quadrant-segment"
+            onMouseEnter={() => setHoveredQuadrant(quadrants[0])}
+            onMouseLeave={() => setHoveredQuadrant(null)}
           />
           <path
             d="M 250 250 L 440 250 A 190 190 0 0 1 250 440 Z"
             fill="url(#internshipGrad)"
             filter="url(#glow)"
             className="quadrant-segment"
+            onMouseEnter={() => setHoveredQuadrant(quadrants[1])}
+            onMouseLeave={() => setHoveredQuadrant(null)}
           />
           <path
             d="M 250 250 L 250 440 A 190 190 0 0 1 60 250 Z"
             fill="url(#identityGrad)"
             filter="url(#glow)"
             className="quadrant-segment"
+            onMouseEnter={() => setHoveredQuadrant(quadrants[2])}
+            onMouseLeave={() => setHoveredQuadrant(null)}
           />
           <path
             d="M 250 250 L 60 250 A 190 190 0 0 1 250 60 Z"
             fill="url(#leadershipGrad)"
             filter="url(#glow)"
             className="quadrant-segment"
+            onMouseEnter={() => setHoveredQuadrant(quadrants[3])}
+            onMouseLeave={() => setHoveredQuadrant(null)}
           />
 
           {/* Curved text labels */}
@@ -286,20 +292,10 @@ function QuadrantCircle3D({ size = 500 }) {
             </textPath>
           </text>
 
-          {/* Core hologram arcs around the center */}
+          {/* Core hologram arcs */}
           <g className="core-arcs">
-            <circle
-              cx="250"
-              cy="250"
-              r="115"
-              className="core-arc core-arc--one"
-            />
-            <circle
-              cx="250"
-              cy="250"
-              r="125"
-              className="core-arc core-arc--two"
-            />
+            <circle cx="250" cy="250" r="115" className="core-arc core-arc--one" />
+            <circle cx="250" cy="250" r="125" className="core-arc core-arc--two" />
           </g>
 
           {/* Center white circle */}
@@ -337,26 +333,13 @@ function QuadrantCircle3D({ size = 500 }) {
             ...iconBadgeStyle(quadrants[0].color),
             top: '-15px',
             left: '50%',
-            transform: 'translateX(-50%)',
-            color: quadrants[0].color,
+            transform: 'translateX(-50%)'
           }}
           className="icon-badge icon-badge-pulse"
+          onMouseEnter={() => setHoveredQuadrant(quadrants[0])}
+          onMouseLeave={() => setHoveredQuadrant(null)}
         >
-          <div style={{ textAlign: 'center' }}>
-            <div>{quadrants[0].icon}</div>
-            {quadrants[0].label && (
-              <div
-                style={{
-                  fontSize: '10px',
-                  color: quadrants[0].color,
-                  fontWeight: 'bold',
-                  marginTop: '2px',
-                }}
-              >
-                {quadrants[0].label}
-              </div>
-            )}
-          </div>
+          {quadrants[0].icon}
         </div>
 
         {/* Internship - Right */}
@@ -365,10 +348,11 @@ function QuadrantCircle3D({ size = 500 }) {
             ...iconBadgeStyle(quadrants[1].color),
             top: '50%',
             right: '-15px',
-            transform: 'translateY(-50%)',
-            color: quadrants[1].color,
+            transform: 'translateY(-50%)'
           }}
           className="icon-badge icon-badge-pulse"
+          onMouseEnter={() => setHoveredQuadrant(quadrants[1])}
+          onMouseLeave={() => setHoveredQuadrant(null)}
         >
           {quadrants[1].icon}
         </div>
@@ -379,10 +363,11 @@ function QuadrantCircle3D({ size = 500 }) {
             ...iconBadgeStyle(quadrants[2].color),
             bottom: '-15px',
             left: '50%',
-            transform: 'translateX(-50%)',
-            color: quadrants[2].color,
+            transform: 'translateX(-50%)'
           }}
           className="icon-badge icon-badge-pulse"
+          onMouseEnter={() => setHoveredQuadrant(quadrants[2])}
+          onMouseLeave={() => setHoveredQuadrant(null)}
         >
           {quadrants[2].icon}
         </div>
@@ -393,13 +378,22 @@ function QuadrantCircle3D({ size = 500 }) {
             ...iconBadgeStyle(quadrants[3].color),
             top: '50%',
             left: '-15px',
-            transform: 'translateY(-50%)',
-            color: quadrants[3].color,
+            transform: 'translateY(-50%)'
           }}
           className="icon-badge icon-badge-pulse"
+          onMouseEnter={() => setHoveredQuadrant(quadrants[3])}
+          onMouseLeave={() => setHoveredQuadrant(null)}
         >
           {quadrants[3].icon}
         </div>
+
+        {/* Tooltip chip positioned by quadrant side */}
+        {hoveredQuadrant && (
+          <div className={`quadrant-tooltip tooltip-${hoveredQuadrant.side}`}>
+            <div className="quadrant-tooltip-title">{hoveredQuadrant.name}</div>
+            <div className="quadrant-tooltip-body">{hoveredQuadrant.tooltip}</div>
+          </div>
+        )}
       </div>
     </div>
   );

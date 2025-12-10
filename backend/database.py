@@ -126,31 +126,37 @@ def seed_data(conn):
         )
     
     # Seed objectives (4 per quadrant)
-    objectives = [
-        # Academic (quadrant_id=1)
-        (1, "Advanced Mathematics Project", "Complete a comprehensive mathematics research project demonstrating advanced problem-solving skills"),
-        (1, "Research Essay", "Write a 3000-word research essay on a topic of academic interest with proper citations"),
-        (1, "Laboratory Report", "Conduct and document a scientific experiment with detailed methodology and analysis"),
-        (1, "Presentation Skills", "Deliver a professional academic presentation to peers and faculty"),
-        
-        # Internship (quadrant_id=2)
-        (2, "Industry Internship Report", "Complete 40 hours of internship and submit comprehensive reflection report"),
-        (2, "Professional Portfolio", "Create a professional portfolio showcasing skills and achievements"),
-        (2, "Mentor Reflection", "Document learning experiences and feedback from industry mentor"),
-        (2, "Career Planning", "Develop a detailed 5-year career plan with actionable steps"),
-        
-        # National Identity (quadrant_id=3)
-        (3, "Community Service Project", "Lead or participate in a community service initiative benefiting local community"),
-        (3, "Cultural Research", "Research and present on Saudi cultural heritage and traditions"),
-        (3, "National Heritage Study", "Study and document significant aspects of Saudi national history"),
-        (3, "Leadership in Heritage", "Organize an event celebrating Saudi national identity"),
-        
-        # Leadership (quadrant_id=4)
-        (4, "Team Project Leadership", "Lead a team of 5+ students in completing a significant project"),
-        (4, "Peer Mentorship", "Mentor younger students and document their progress over one semester"),
-        (4, "Initiative Proposal", "Develop and pitch a new school initiative to administration"),
-        (4, "Leadership Reflection", "Write a comprehensive reflection on leadership experiences and growth")
-    ]
+# Seed objectives (KPIs) per quadrant
+        objectives = [
+            # Academic (quadrant_id = 1)
+            (1, "IGCSE Performance",
+                "Track and evidence performance in IGCSE subjects, including mock exams, coursework and final grades."),
+            (1, "IAL Performance",
+                "Track and evidence performance in International A Level (IAL) subjects, including mock exams and final grades."),
+            (1, "National Exams (NAFS / Qudrat / Tahsili)",
+                "Record results and preparation evidence for national exams such as NAFS G6, NAFS G9, Qudrat and Tahsili."),
+            (1, "EPQ-style Research Project",
+                "Complete and document an Extended Project Qualification (EPQ) style research project with proposal, product and reflection."),
+
+            # Internship (quadrant_id = 2)
+            (2, "Industry Internship Report",
+                "Complete an industry internship and submit a structured report capturing responsibilities, impact and reflections."),
+            (2, "Career Planning",
+                "Develop and maintain a multi-year career plan with clear milestones, target pathways and action steps."),
+
+            # National Identity (quadrant_id = 3)
+            (3, "Arabic Language Development",
+                "Demonstrate growth in Arabic language through coursework, assessments and authentic communication tasks."),
+            (3, "National Heritage Study",
+                "Research, document and present significant aspects of Saudi national heritage, history or culture."),
+
+            # Leadership (quadrant_id = 4)
+            (4, "CMI-linked Leadership Competencies",
+                "Work towards CMI (or equivalent) leadership competencies, evidencing application in real projects and roles."),
+            (4, "Presentation Skills",
+                "Plan, deliver and reflect on high-quality presentations to different audiences, demonstrating confident communication."),
+        ]
+
     
     for quad_id, title, desc in objectives:
         cursor.execute(
@@ -161,7 +167,7 @@ def seed_data(conn):
     # Seed teachers
     password_hash = hash_password("password123")
     teachers = [
-        ("teacher1", "teacher1@miskschools.edu.sa", "Dr. Sarah Johnson", "teacher"),
+        ("teacher1", "teacher1@miskschools.edu.sa", "Mr. Murray Thomas", "teacher"),
         ("teacher2", "teacher2@miskschools.edu.sa", "Mr. Ahmed Al-Rashid", "teacher")
     ]
     
