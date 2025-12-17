@@ -398,3 +398,45 @@
     transform: translateX(-50%);
   }
 }
+/* Modern Misk Core effects */
+.misk-core-orbit {
+  transform-origin: 250px 250px;
+  animation: miskOrbit 10s linear infinite;
+  opacity: 0.9;
+}
+
+.misk-core-ring {
+  filter: drop-shadow(0 0 10px rgba(0, 214, 160, 0.25));
+}
+
+.misk-core-surface {
+  animation: miskPulse 2.8s ease-in-out infinite;
+}
+
+.misk-core-title {
+  filter: drop-shadow(0 6px 18px rgba(0, 214, 160, 0.18));
+}
+
+@keyframes miskOrbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes miskPulse {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.02);
+    filter: brightness(1.05);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
