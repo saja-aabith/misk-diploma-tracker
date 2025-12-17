@@ -1,454 +1,283 @@
-:root {
-  --misk-green: #02664b;
-  --misk-dark: #024131;
+/* =========================================================
+   GLOBAL RESET (KILLS WHITE STRIP)
+========================================================= */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0f7c56; /* fallback */
 }
 
-/* -------------------------------------------------------
-   PAGE + HERO BACKGROUND
-------------------------------------------------------- */
+#root {
+  min-height: 100vh;
+  background: #0f7c56;
+}
 
+/* =========================================================
+   VARIABLES
+========================================================= */
+:root {
+  --misk-green: #02664B;
+
+  --hero-glow: rgba(235, 255, 250, 0.85);
+  --hero-soft: rgba(160, 245, 220, 0.32);
+  --hero-soft2: rgba(140, 235, 210, 0.22);
+
+  --banner-a: rgba(2, 102, 75, 0.74);
+  --banner-b: rgba(2, 102, 75, 0.58);
+  --banner-c: rgba(2, 102, 75, 0.44);
+}
+
+/* =========================================================
+   PAGE BACKGROUND (YOUR NICE VERSION)
+========================================================= */
 .home-page {
   position: relative;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 20% -10%, #b9ffe9 0, transparent 45%),
-    radial-gradient(circle at 80% 110%, #9cf0d1 0, transparent 55%),
-    radial-gradient(circle at 50% 20%, #e6fff7 0, transparent 50%),
-    linear-gradient(135deg, #2ac98b 0%, #0f7c56 40%, #074534 100%);
-  color: #073529;
   overflow-x: hidden;
+  overflow-y: hidden;
+
+  background:
+    radial-gradient(circle at 50% 18%, var(--hero-glow) 0%, rgba(235, 255, 250, 0) 48%),
+    radial-gradient(circle at 18% 30%, var(--hero-soft) 0%, rgba(160, 245, 220, 0) 55%),
+    radial-gradient(circle at 85% 55%, var(--hero-soft2) 0%, rgba(140, 235, 210, 0) 60%),
+    linear-gradient(135deg, #2ac98b 0%, #0f7c56 45%, #074534 100%);
 }
 
-/* Full-page floating educational icons behind content */
+/* =========================================================
+   BACKGROUND LUCIDE ICONS
+========================================================= */
 .education-background-full {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  overflow: hidden;
 }
 
-/* Floating background icons (lucide) */
-.education-background-full .floating-icon {
+.floating-icon {
   position: absolute;
-  opacity: 0.16;
-  animation: float 10s ease-in-out infinite;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.08));
+  opacity: 0.18;
+  animation: float 12s ease-in-out infinite;
 }
 
-/* Thin outlined icons for background */
 .bg-icon {
   stroke-width: 1.6;
-  opacity: 0.18;
+  color: rgba(255, 255, 255, 0.50);
+  filter:
+    drop-shadow(0 6px 16px rgba(0, 0, 0, 0.12))
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.14));
 }
 
-/* Float animation */
 @keyframes float {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-    opacity: 0.10;
-  }
-  25% {
-    transform: translateY(-25px) rotate(4deg);
-    opacity: 0.16;
-  }
-  50% {
-    transform: translateY(-45px) rotate(-4deg);
-    opacity: 0.2;
-  }
-  75% {
-    transform: translateY(-25px) rotate(2deg);
-    opacity: 0.16;
-  }
+  0%, 100% { transform: translateY(0); opacity: 0.14; }
+  50% { transform: translateY(-34px); opacity: 0.22; }
 }
 
-/* -------------------------------------------------------
-   HEADER
-------------------------------------------------------- */
-
-/* -------------------------------------------------------
-   FUTURISTIC GLASS HEADER
-------------------------------------------------------- */
-
+/* =========================================================
+   HEADER / BANNER (LOGO REMOVED + OPTION A STRONGER SWEEP)
+========================================================= */
 .header {
   position: sticky;
   top: 0;
-  z-index: 6;
+  z-index: 10;
+
   background:
-    radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.18), transparent 55%),
-    linear-gradient(
-      to right,
-      rgba(3, 58, 43, 0.96),
-      rgba(4, 90, 64, 0.96),
-      rgba(3, 58, 43, 0.96)
-    );
+    radial-gradient(circle at 25% 0%, rgba(255, 255, 255, 0.12), transparent 55%),
+    linear-gradient(to right, var(--banner-a), var(--banner-b), var(--banner-a));
+
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+
+  overflow: hidden; /* required for sweep */
 }
 
+/* ✅ OPTION A: STRONGER, MORE VISIBLE SWEEP */
+.header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -70%;
+  width: 70%;
+  pointer-events: none;
+
+  background:
+    linear-gradient(
+      105deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.00) 28%,
+      rgba(255, 255, 255, 0.32) 46%,
+      rgba(255, 255, 255, 0.18) 54%,
+      rgba(255, 255, 255, 0.06) 60%,
+      transparent 100%
+    );
+
+  opacity: 0.95;
+  transform: skewX(-12deg);
+  filter:
+    blur(0.2px)
+    drop-shadow(0 0 18px rgba(255, 255, 255, 0.22));
+  animation: bannerSweep 5.8s ease-in-out infinite;
+}
+
+@keyframes bannerSweep {
+  0%   { transform: translateX(0) skewX(-12deg); opacity: 0; }
+  8%   { opacity: 0.95; }
+  55%  { transform: translateX(230%) skewX(-12deg); opacity: 0.55; }
+  100% { transform: translateX(230%) skewX(-12deg); opacity: 0; }
+}
+
+/* ✅ Fade banner into hero (blends nicely) */
+.header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -52px;
+  height: 52px;
+  pointer-events: none;
+
+  background: linear-gradient(
+    to bottom,
+    rgba(2, 102, 75, 0.24),
+    rgba(2, 102, 75, 0.0)
+  );
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .floating-icon { animation: none; }
+  .header::before { animation: none; }
+}
+
+/* =========================================================
+   HEADER CONTENT (TEXT ONLY; NO LOGO)
+========================================================= */
 .header .container {
-  max-width: 1120px;
+  position: relative;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 10px 24px;
+  padding: 18px 32px;
+  z-index: 2;
 }
 
-.header-content {
+/* In case your HomePage.js still renders .brand */
+.brand-logo,
+.brand img {
+  display: none !important; /* ✅ force-remove any logo */
+}
+
+.brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0;
 }
 
-/* Brand on the left */
-.logo {
+/* Optional: keep subtle header text if you have it */
+.brand-text-wrap {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.brand-text {
+  color: rgba(255, 255, 255, 0.92);
   font-weight: 800;
-  font-size: 18px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #eafff6;
+  font-size: 14px;
 }
 
-/* Optional right-side pills (can use later if you add nav links) */
-.header-actions {
-  display: flex;
-  gap: 10px;
-  font-size: 11px;
+.brand-subtext {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.70);
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: rgba(234, 255, 247, 0.8);
+  font-size: 11px;
 }
 
-.header-pill {
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(10px);
-}
-
-/* -------------------------------------------------------
-   HERO SECTION
-------------------------------------------------------- */
-
+/* =========================================================
+   HERO
+========================================================= */
 .hero {
   position: relative;
   z-index: 3;
-  padding: 70px 0 140px;
+  padding: 62px 0 120px;
   text-align: center;
-  overflow: hidden;
 }
 
-/* Futuristic grid + light blob overlay */
+/* faint grid */
 .hero::before {
   content: "";
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
   background-size: 60px 60px;
-  opacity: 0.45;
-  mix-blend-mode: soft-light;
+  opacity: 0.18;
   pointer-events: none;
-}
-
-.hero::after {
-  content: "";
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), transparent 70%);
-  top: -150px;
-  left: 50%;
-  transform: translateX(-50%);
-  filter: blur(4px);
-  opacity: 0.6;
-  animation: hero-blob 16s ease-in-out infinite alternate;
-  pointer-events: none;
-}
-
-@keyframes hero-blob {
-  0% {
-    transform: translateX(-50%) translateY(0) scale(1);
-  }
-  50% {
-    transform: translateX(-45%) translateY(40px) scale(1.1);
-  }
-  100% {
-    transform: translateX(-55%) translateY(-10px) scale(1.05);
-  }
 }
 
 .hero .container {
-  position: relative;
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
+  position: relative;
   z-index: 2;
 }
 
 .hero h1 {
-  font-size: 42px;
-  line-height: 1.1;
+  font-size: 46px;
   margin-bottom: 10px;
-  color: #073529;
+  color: #0b3f33;
 }
 
 .hero p {
   font-size: 18px;
-  margin: 0 0 30px;
-  color: #0c513b;
+  margin-bottom: 30px;
+  color: rgba(11, 63, 51, 0.85);
 }
 
-/* -------------------------------------------------------
-   ORBIT LAYOUT AROUND QUADRANT CIRCLE
-------------------------------------------------------- */
-
-.hero-orbit {
-  position: relative;
-  margin-top: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.canvas-container {
-  position: relative;
-  z-index: 2;
-}
-
-/* Glassmorphism info chips around the circle */
-.hero-orbit-card {
-  position: absolute;
-  width: 220px;
-  max-width: 32vw;
-  padding: 10px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.15),
-    0 0 30px rgba(2, 102, 75, 0.25);
-  color: #053024;
-  transform-origin: center;
-  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-.hero-orbit-card h3 {
-  font-size: 14px;
-  font-weight: 700;
-  margin: 0 0 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #024b37;
-}
-
-.hero-orbit-card p {
-  font-size: 12px;
-  margin: 0;
-  line-height: 1.5;
-}
-
-/* Positions */
-.hero-orbit-card--top {
-  top: -10px;
-  left: 50%;
-  transform: translate(-50%, -100%);
-}
-
-.hero-orbit-card--left {
-  left: -30px;
-  top: 48%;
-  transform: translate(-100%, -50%);
-}
-
-.hero-orbit-card--right {
-  right: -30px;
-  top: 48%;
-  transform: translate(100%, -50%);
-}
-
-.hero-orbit-card--bottom {
-  bottom: -10px;
-  left: 50%;
-  transform: translate(-50%, 100%);
-}
-
-/* Hover behaviour */
-.hero-orbit-card--top:hover {
-  transform: translate(-50%, -100%) translateY(-4px);
-  box-shadow:
-    0 14px 40px rgba(0, 0, 0, 0.25),
-    0 0 50px rgba(2, 102, 75, 0.45);
-  border-color: rgba(255, 255, 255, 0.7);
-}
-
-.hero-orbit-card--left:hover {
-  transform: translate(-100%, -50%) translateX(-4px);
-  box-shadow:
-    0 14px 40px rgba(0, 0, 0, 0.25),
-    0 0 50px rgba(2, 102, 75, 0.45);
-  border-color: rgba(255, 255, 255, 0.7);
-}
-
-.hero-orbit-card--right:hover {
-  transform: translate(100%, -50%) translateX(4px);
-  box-shadow:
-    0 14px 40px rgba(0, 0, 0, 0.25),
-    0 0 50px rgba(2, 102, 75, 0.45);
-  border-color: rgba(255, 255, 255, 0.7);
-}
-
-.hero-orbit-card--bottom:hover {
-  transform: translate(-50%, 100%) translateY(4px);
-  box-shadow:
-    0 14px 40px rgba(0, 0, 0, 0.25),
-    0 0 50px rgba(2, 102, 75, 0.45);
-  border-color: rgba(255, 255, 255, 0.7);
-}
-
-/* -------------------------------------------------------
+/* =========================================================
    BUTTONS
-------------------------------------------------------- */
-
+========================================================= */
 .button-container {
   display: flex;
   gap: 24px;
   margin-top: 48px;
   justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
 }
 
-.button-container .btn {
-  min-width: 200px;
-  padding: 16px 32px;
-  font-size: 18px;
-  font-weight: 600;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  position: relative;
-  overflow: hidden;
-  background: #0f6247;
-  color: #ffffff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  animation: pulse-glow 3s ease-in-out infinite;
-}
-
-.button-container .btn::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  transform: translate(-50%, -50%);
-  transition: width 0.6s, height 0.6s;
-}
-
-.button-container .btn:hover::before {
-  width: 300px;
-  height: 300px;
-}
-
-.btn-icon {
-  font-size: 24px;
-  transition: transform 0.3s ease;
-}
-
-.button-container .btn:hover .btn-icon {
-  transform: scale(1.2) rotate(10deg);
-}
-
-.button-container .btn-primary {
-  background: linear-gradient(135deg, #02664b 0%, #024d38 100%);
-}
-
-.button-container .btn-primary:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(2, 102, 75, 0.4);
-}
-
-.button-container .btn-secondary {
-  background: linear-gradient(135deg, #038a63 0%, #02664b 100%);
-}
-
-.button-container .btn-secondary:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(3, 138, 99, 0.4);
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(2, 102, 75, 0.35);
-  }
-}
-
-/* -------------------------------------------------------
-   FOOTER
-------------------------------------------------------- */
-
+/* =========================================================
+   FOOTER (PREVENTS WHITE STRIP)
+   If you have a footer element, keep it inside the green page.
+========================================================= */
 .footer {
-  position: relative;
-  z-index: 3;
-  padding: 24px 0 40px;
+  padding: 18px 0 26px;
   text-align: center;
-  color: #e4fff7;
-  font-size: 13px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
 }
 
-.footer .container {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 0 24px;
+/* If your app has an extra wrapper or footer margin somewhere */
+footer, main {
+  background: transparent;
 }
 
-/* -------------------------------------------------------
+/* =========================================================
    RESPONSIVE
-------------------------------------------------------- */
-
-@media (max-width: 900px) {
-  .hero-orbit-card {
-    display: none;
-  }
-}
-
+========================================================= */
 @media (max-width: 768px) {
-  .button-container {
-    flex-direction: column;
-    gap: 16px;
-    margin-top: 32px;
+  .header .container {
+    padding: 14px 18px;
   }
 
-  .button-container .btn {
-    width: 100%;
-    max-width: 300px;
-  }
-}
-
-@media (max-width: 480px) {
-  .button-container .btn {
-    min-width: 180px;
-    padding: 14px 24px;
-    font-size: 16px;
-  }
-
-  .btn-icon {
-    font-size: 20px;
+  .hero h1 {
+    font-size: 36px;
   }
 }

@@ -38,9 +38,14 @@ function TeacherDashboard() {
     // Get unique students from submissions
     try {
       const response = await teacher.getSubmissions('all');
-      const uniqueStudents = [...new Map(
-        response.data.submissions.map(s => [s.student_id, { id: s.student_id, name: s.student_name }])
-      ).values()];
+      const uniqueStudents = [
+        ...new Map(
+          response.data.submissions.map((s) => [
+            s.student_id,
+            { id: s.student_id, name: s.student_name }
+          ])
+        ).values()
+      ];
       setStudents(uniqueStudents);
     } catch (error) {
       console.error('Failed to load students:', error);
@@ -61,12 +66,12 @@ function TeacherDashboard() {
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
-    
+
     if (!decision) {
       alert('Please select approve or reject');
       return;
     }
-    
+
     if (rating === 0) {
       alert('Please select a rating');
       return;
@@ -79,9 +84,9 @@ function TeacherDashboard() {
         submission_id: selectedSubmission.id,
         rating,
         decision,
-        feedback,
+        feedback
       });
-      
+
       alert('Review submitted successfully!');
       setSelectedSubmission(null);
       setRating(0);
@@ -109,6 +114,38 @@ function TeacherDashboard() {
     return <div className="loading">Loading...</div>;
   }
 
+  // ✅ Make the tabs more visible (works even if CSS is weak)
+  const tabBase = {
+    position: 'relative',
+    padding: '14px 18px',
+    fontWeight: 800,
+    letterSpacing: '0.02em',
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.85)'
+  };
+
+  const tabActive = {
+    color: '#ffffff',
+    textShadow: '0 2px 14px rgba(0,0,0,0.18)',
+    filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.12))'
+  };
+
+  const tabInactive = {
+    color: 'rgba(255,255,255,0.82)'
+  };
+
+  const activeUnderline = {
+    content: '""',
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: -8,
+    height: 4,
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.9)',
+    boxShadow: '0 10px 26px rgba(0,0,0,0.18), 0 0 22px rgba(255,255,255,0.24)'
+  };
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
@@ -118,24 +155,31 @@ function TeacherDashboard() {
               <h2>{user?.full_name || 'Teacher'}</h2>
               <p>Teacher Dashboard</p>
             </div>
-            <button onClick={logout} className="btn-logout">Logout</button>
+            <button onClick={logout} className="btn-logout">
+              Logout
+            </button>
           </div>
         </div>
       </header>
 
       <div className="container">
         <div className="tabs">
-          <button 
+          <button
             className={`tab ${activeTab === 'review' ? 'active' : ''}`}
             onClick={() => setActiveTab('review')}
+            style={{ ...tabBase, ...(activeTab === 'review' ? tabActive : tabInactive) }}
           >
             Pending Reviews
+            {activeTab === 'review' && <span style={activeUnderline} />}
           </button>
-          <button 
+
+          <button
             className={`tab ${activeTab === 'report' ? 'active' : ''}`}
             onClick={() => setActiveTab('report')}
+            style={{ ...tabBase, ...(activeTab === 'report' ? tabActive : tabInactive) }}
           >
             Student Reports
+            {activeTab === 'report' && <span style={activeUnderline} />}
           </button>
         </div>
 
@@ -157,16 +201,15 @@ function TeacherDashboard() {
                   <div key={submission.id} className="queue-item">
                     <div className="queue-info">
                       <h4>{submission.student_name}</h4>
-                      <p>{submission.objective_title} • {submission.quadrant_name}</p>
+                      <p>
+                        {submission.objective_title} • {submission.quadrant_name}
+                      </p>
                       <p style={{ fontSize: '14px', color: '#7f8c8d' }}>
-                        {new Date(submission.submission_date).toLocaleDateString()} • 
-                        Reviews: {submission.review_status}
+                        {new Date(submission.submission_date).toLocaleDateString()} • Reviews:{' '}
+                        {submission.review_status}
                       </p>
                     </div>
-                    <button
-                      className="btn-review"
-                      onClick={() => handleReviewClick(submission)}
-                    >
+                    <button className="btn-review" onClick={() => handleReviewClick(submission)}>
                       Review
                     </button>
                   </div>
@@ -179,10 +222,7 @@ function TeacherDashboard() {
         {activeTab === 'report' && (
           <>
             <div className="filter-bar">
-              <select 
-                value={selectedStudent || ''} 
-                onChange={(e) => handleStudentSelect(e.target.value)}
-              >
+              <select value={selectedStudent || ''} onChange={(e) => handleStudentSelect(e.target.value)}>
                 <option value="">Select a student...</option>
                 {students.map((student) => (
                   <option key={student.id} value={student.id}>
@@ -195,13 +235,15 @@ function TeacherDashboard() {
             {studentReport && (
               <div className="card">
                 <h3>{studentReport.student_name}'s Progress Report</h3>
-                <div style={{ 
-                  textAlign: 'center', 
-                  fontSize: '32px', 
-                  fontWeight: 'bold', 
-                  color: '#2c3e50',
-                  margin: '20px 0'
-                }}>
+                <div
+                  style={{
+                    textAlign: 'center',
+                    fontSize: '32px',
+                    fontWeight: 'bold',
+                    color: '#2c3e50',
+                    margin: '20px 0'
+                  }}
+                >
                   Overall: {studentReport.overall_completion_percentage}%
                 </div>
 
@@ -221,7 +263,7 @@ function TeacherDashboard() {
                           className="progress-fill"
                           style={{
                             width: `${quadrant.completion_percentage}%`,
-                            background: quadrant.color,
+                            background: quadrant.color
                           }}
                         />
                       </div>
@@ -246,15 +288,23 @@ function TeacherDashboard() {
 
       {selectedSubmission && (
         <div className="modal-overlay" onClick={() => setSelectedSubmission(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '600px' }}
+          >
             <div className="modal-header">
               <h3>Review Submission</h3>
-              <button className="btn-close" onClick={() => setSelectedSubmission(null)}>×</button>
+              <button className="btn-close" onClick={() => setSelectedSubmission(null)}>
+                ×
+              </button>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <h4>{selectedSubmission.student_name}</h4>
-              <p>{selectedSubmission.objective_title} • {selectedSubmission.quadrant_name}</p>
+              <p>
+                {selectedSubmission.objective_title} • {selectedSubmission.quadrant_name}
+              </p>
               <p style={{ fontSize: '14px', color: '#7f8c8d' }}>
                 Submitted: {new Date(selectedSubmission.submission_date).toLocaleString()}
               </p>
@@ -264,7 +314,8 @@ function TeacherDashboard() {
             </div>
 
             <div style={{ marginBottom: '20px', padding: '12px', background: '#f8f9fa', borderRadius: '8px' }}>
-              <strong>File:</strong> {selectedSubmission.file_name}<br />
+              <strong>File:</strong> {selectedSubmission.file_name}
+              <br />
               {selectedSubmission.description && (
                 <>
                   <strong>Description:</strong> {selectedSubmission.description}
