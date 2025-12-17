@@ -7,6 +7,11 @@
   --glow-weak: rgba(2, 102, 75, 0.35);
   --glow-mid: rgba(2, 102, 75, 0.55);
   --glow-strong: rgba(2, 102, 75, 0.85);
+
+  /* New: neon for futuristic “root network” */
+  --root-neon: rgba(0, 214, 160, 0.95);
+  --root-neon-mid: rgba(0, 214, 160, 0.55);
+  --root-neon-soft: rgba(0, 214, 160, 0.18);
 }
 
 /* Strengthen quadrant segment hover effect */
@@ -360,6 +365,13 @@
   transform: translateY(-50%);
 }
 
+/* Center tooltip (Misk Core) — keep it above the circle */
+.tooltip-center {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -140%);
+}
+
 .quadrant-tooltip-title {
   font-size: 11px;
   text-transform: uppercase;
@@ -385,12 +397,12 @@
 }
 
 /* Mobile: center tooltip below circle so it doesn't go off-screen */
-
 @media (max-width: 768px) {
   .tooltip-right,
   .tooltip-left,
   .tooltip-top,
-  .tooltip-bottom {
+  .tooltip-bottom,
+  .tooltip-center {
     left: 50%;
     right: auto;
     top: auto;
@@ -398,26 +410,91 @@
     transform: translateX(-50%);
   }
 }
-/* Modern Misk Core effects */
-.misk-core-orbit {
-  transform-origin: 250px 250px;
-  animation: miskOrbit 10s linear infinite;
-  opacity: 0.9;
+
+/* -------------------------------------------------------------
+   FUTURISTIC ROOT NETWORK (STRETCHES INTO ALL 4 QUADRANTS)
+   Uses classNames from the updated JSX:
+   - .misk-root-network
+   - .root-flow, .root-flow--a, .root-flow--b, .root-flow--c
+   - .root-node
+   - .misk-core-rings
+   - .misk-core-surface
+------------------------------------------------------------- */
+
+.misk-root-network {
+  opacity: 1;
+  mix-blend-mode: screen;
 }
 
-.misk-core-ring {
-  filter: drop-shadow(0 0 10px rgba(0, 214, 160, 0.25));
+.root-flow {
+  stroke-dasharray: 14 18;
+  stroke-dashoffset: 0;
+  animation: rootFlow 2.4s linear infinite;
+}
+
+.root-flow--a {
+  animation-duration: 2.1s;
+  opacity: 0.95;
+}
+
+.root-flow--b {
+  animation-duration: 3.0s;
+  opacity: 0.88;
+}
+
+.root-flow--c {
+  animation-duration: 2.6s;
+  opacity: 0.92;
+}
+
+.root-node {
+  transform-origin: center;
+  animation: nodePulse 1.8s ease-in-out infinite;
+}
+
+/* Extra “pop” so roots are more visible against bright backgrounds */
+.root-flow,
+.root-node {
+  filter:
+    drop-shadow(0 0 6px var(--root-neon-mid))
+    drop-shadow(0 0 14px var(--root-neon));
+}
+
+.misk-core-rings {
+  transform-origin: 250px 250px;
+  animation: ringsRotate 12s linear infinite;
+  opacity: 0.95;
 }
 
 .misk-core-surface {
-  animation: miskPulse 2.8s ease-in-out infinite;
+  animation: corePulse 2.8s ease-in-out infinite;
 }
 
-.misk-core-title {
-  filter: drop-shadow(0 6px 18px rgba(0, 214, 160, 0.18));
+@keyframes rootFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -160;
+  }
 }
 
-@keyframes miskOrbit {
+@keyframes nodePulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.45);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+}
+
+@keyframes ringsRotate {
   from {
     transform: rotate(0deg);
   }
@@ -426,14 +503,14 @@
   }
 }
 
-@keyframes miskPulse {
+@keyframes corePulse {
   0% {
     transform: scale(1);
     filter: brightness(1);
   }
   50% {
     transform: scale(1.02);
-    filter: brightness(1.05);
+    filter: brightness(1.08);
   }
   100% {
     transform: scale(1);

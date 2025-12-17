@@ -6,7 +6,6 @@ function QuadrantCircle3D({ size = 500 }) {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [hoveredQuadrant, setHoveredQuadrant] = useState(null);
 
-  // Center category (shared across all quadrants)
   const miskCore = {
     name: 'Misk Core',
     side: 'center',
@@ -102,7 +101,7 @@ function QuadrantCircle3D({ size = 500 }) {
     color
   });
 
-  // Segment mapping to match your image layout
+  // Segment mapping (matches your layout)
   const SEG_TOP_RIGHT = quadrants[1]; // Internship
   const SEG_BOTTOM_RIGHT = quadrants[2]; // National Identity
   const SEG_BOTTOM_LEFT = quadrants[3]; // Leadership
@@ -118,35 +117,54 @@ function QuadrantCircle3D({ size = 500 }) {
       >
         <svg className="quadrant-svg" width={size} height={size} viewBox="0 0 500 500">
           <defs>
-            {/* Gradients */}
+            {/* Quadrant gradients */}
             <linearGradient id="academicGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style={{ stopColor: '#E74C3C', stopOpacity: 1 }} />
               <stop offset="100%" style={{ stopColor: '#C0392B', stopOpacity: 1 }} />
             </linearGradient>
-
             <linearGradient id="internshipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style={{ stopColor: '#9B59B6', stopOpacity: 1 }} />
               <stop offset="100%" style={{ stopColor: '#8E44AD', stopOpacity: 1 }} />
             </linearGradient>
-
             <linearGradient id="identityGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style={{ stopColor: '#2ECC71', stopOpacity: 1 }} />
               <stop offset="100%" style={{ stopColor: '#27AE60', stopOpacity: 1 }} />
             </linearGradient>
-
             <linearGradient id="leadershipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style={{ stopColor: '#F39C12', stopOpacity: 1 }} />
               <stop offset="100%" style={{ stopColor: '#E67E22', stopOpacity: 1 }} />
             </linearGradient>
 
-            {/* Modern “Misk Core” radial fill */}
+            {/* Center surface */}
             <radialGradient id="miskCoreGrad" cx="50%" cy="40%" r="70%">
               <stop offset="0%" stopColor="#FFFFFF" />
               <stop offset="60%" stopColor="#F5FFFB" />
               <stop offset="100%" stopColor="#E6FFF6" />
             </radialGradient>
 
-            {/* Glow filter */}
+            {/* Futuristic neon root gradients (one per quadrant direction) */}
+            <linearGradient id="rootGradTR" x1="250" y1="250" x2="365" y2="135" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="rgba(0,214,160,0.85)" />
+              <stop offset="55%" stopColor="rgba(0,214,160,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,214,160,0.08)" />
+            </linearGradient>
+            <linearGradient id="rootGradBR" x1="250" y1="250" x2="365" y2="365" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="rgba(0,214,160,0.85)" />
+              <stop offset="55%" stopColor="rgba(0,214,160,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,214,160,0.08)" />
+            </linearGradient>
+            <linearGradient id="rootGradBL" x1="250" y1="250" x2="135" y2="365" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="rgba(0,214,160,0.85)" />
+              <stop offset="55%" stopColor="rgba(0,214,160,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,214,160,0.08)" />
+            </linearGradient>
+            <linearGradient id="rootGradTL" x1="250" y1="250" x2="135" y2="135" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="rgba(0,214,160,0.85)" />
+              <stop offset="55%" stopColor="rgba(0,214,160,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,214,160,0.08)" />
+            </linearGradient>
+
+            {/* Glows */}
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="8" result="coloredBlur" />
               <feMerge>
@@ -156,7 +174,6 @@ function QuadrantCircle3D({ size = 500 }) {
               </feMerge>
             </filter>
 
-            {/* Stronger outer glow */}
             <filter id="outerGlow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur in="SourceAlpha" stdDeviation="10" />
               <feOffset dx="0" dy="0" result="offsetblur" />
@@ -169,16 +186,22 @@ function QuadrantCircle3D({ size = 500 }) {
               </feMerge>
             </filter>
 
-            {/* Shadow filter */}
             <filter id="shadow">
               <feDropShadow dx="0" dy="6" stdDeviation="10" floodOpacity="0.25" />
             </filter>
 
-            {/* NEW: Futuristic center glow */}
-            <filter id="coreGlow" x="-80%" y="-80%" width="260%" height="260%">
-              <feDropShadow dx="0" dy="0" stdDeviation="10" floodColor="#00D6A0" floodOpacity="0.45" />
-              <feDropShadow dx="0" dy="0" stdDeviation="20" floodColor="#00D6A0" floodOpacity="0.22" />
+            {/* Strong neon for roots */}
+            <filter id="rootNeon" x="-120%" y="-120%" width="340%" height="340%">
+              <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#00D6A0" floodOpacity="0.65" />
+              <feDropShadow dx="0" dy="0" stdDeviation="14" floodColor="#00D6A0" floodOpacity="0.35" />
               <feDropShadow dx="0" dy="10" stdDeviation="14" floodColor="#000000" floodOpacity="0.18" />
+            </filter>
+
+            {/* Center glow */}
+            <filter id="coreGlow" x="-80%" y="-80%" width="260%" height="260%">
+              <feDropShadow dx="0" dy="0" stdDeviation="10" floodColor="#00D6A0" floodOpacity="0.40" />
+              <feDropShadow dx="0" dy="0" stdDeviation="22" floodColor="#00D6A0" floodOpacity="0.20" />
+              <feDropShadow dx="0" dy="12" stdDeviation="16" floodColor="#000000" floodOpacity="0.16" />
             </filter>
 
             {/* Curved text paths (POSITION paths) */}
@@ -188,7 +211,7 @@ function QuadrantCircle3D({ size = 500 }) {
             <path id="leadershipPath" d="M 95 250 A 155 155 0 0 1 250 95" fill="none" /> {/* top-left */}
           </defs>
 
-          {/* Hologram circuit layer behind everything */}
+          {/* Circuit layer */}
           <g className="circuit-layer">
             <circle cx="250" cy="250" r="170" className="circuit-ring circuit-ring--outer" />
             <circle cx="250" cy="250" r="140" className="circuit-ring circuit-ring--inner" />
@@ -203,7 +226,7 @@ function QuadrantCircle3D({ size = 500 }) {
             <line x1="360" y1="360" x2="335" y2="335" className="circuit-spoke" />
           </g>
 
-          {/* Outer glow circle */}
+          {/* Outer glow */}
           <circle
             cx="250"
             cy="250"
@@ -215,7 +238,7 @@ function QuadrantCircle3D({ size = 500 }) {
             filter="url(#outerGlow)"
           />
 
-          {/* Quadrant segments */}
+          {/* Quadrants */}
           <path
             d="M 250 250 L 250 60 A 190 190 0 0 1 440 250 Z"
             fill="url(#internshipGrad)"
@@ -249,56 +272,132 @@ function QuadrantCircle3D({ size = 500 }) {
             onMouseLeave={() => setHoveredQuadrant(null)}
           />
 
-          {/* Curved text labels */}
+          {/* Labels */}
           <text fill="white" fontSize="18" fontWeight="bold" letterSpacing="2" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
             <textPath href="#academicPath" startOffset="50%" textAnchor="middle">
               {SEG_TOP_RIGHT.name}
             </textPath>
           </text>
-
           <text fill="white" fontSize="16" fontWeight="bold" letterSpacing="1" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
             <textPath href="#internshipPath" startOffset="50%" textAnchor="middle">
               {SEG_BOTTOM_RIGHT.name}
             </textPath>
           </text>
-
           <text fill="white" fontSize="18" fontWeight="bold" letterSpacing="2" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
             <textPath href="#identityPath" startOffset="50%" textAnchor="middle">
               {SEG_BOTTOM_LEFT.name}
             </textPath>
           </text>
-
           <text fill="white" fontSize="18" fontWeight="bold" letterSpacing="2" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
             <textPath href="#leadershipPath" startOffset="50%" textAnchor="middle">
               {SEG_TOP_LEFT.name}
             </textPath>
           </text>
 
-          {/* ===== NEW: Futuristic center system (rings + glow) ===== */}
-          {/* Rotating dashed ring */}
+          {/* ===== FUTURISTIC ROOTS: stretch into ALL 4 quadrants ===== */}
+          <g className="misk-root-network" filter="url(#rootNeon)" pointerEvents="none">
+            {/* TOP-LEFT (Academic) */}
+            <path
+              d="M 250 250 C 228 228, 195 200, 150 150"
+              stroke="url(#rootGradTL)"
+              strokeWidth="5"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--a"
+            />
+            <path
+              d="M 235 235 C 210 218, 182 190, 160 165"
+              stroke="url(#rootGradTL)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--b"
+            />
+
+            {/* TOP-RIGHT (Internship) */}
+            <path
+              d="M 250 250 C 272 228, 305 200, 350 150"
+              stroke="url(#rootGradTR)"
+              strokeWidth="5"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--a"
+            />
+            <path
+              d="M 265 235 C 290 218, 318 190, 340 165"
+              stroke="url(#rootGradTR)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--c"
+            />
+
+            {/* BOTTOM-RIGHT (National Identity) */}
+            <path
+              d="M 250 250 C 272 272, 305 300, 350 350"
+              stroke="url(#rootGradBR)"
+              strokeWidth="5"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--a"
+            />
+            <path
+              d="M 265 265 C 290 282, 320 312, 342 338"
+              stroke="url(#rootGradBR)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--b"
+            />
+
+            {/* BOTTOM-LEFT (Leadership) */}
+            <path
+              d="M 250 250 C 228 272, 195 300, 150 350"
+              stroke="url(#rootGradBL)"
+              strokeWidth="5"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--a"
+            />
+            <path
+              d="M 235 265 C 210 282, 180 312, 158 338"
+              stroke="url(#rootGradBL)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              fill="none"
+              className="root-flow root-flow--c"
+            />
+
+            {/* Little “nodes” to make it feel like a futuristic network */}
+            <circle cx="150" cy="150" r="4.5" fill="rgba(0,214,160,0.85)" className="root-node" />
+            <circle cx="350" cy="150" r="4.5" fill="rgba(0,214,160,0.85)" className="root-node" />
+            <circle cx="350" cy="350" r="4.5" fill="rgba(0,214,160,0.85)" className="root-node" />
+            <circle cx="150" cy="350" r="4.5" fill="rgba(0,214,160,0.85)" className="root-node" />
+          </g>
+
+          {/* Subtle growth rings around the core */}
           <circle
             cx="250"
             cy="250"
             r="112"
             fill="none"
-            stroke="rgba(0, 214, 160, 0.45)"
+            stroke="rgba(0,214,160,0.35)"
             strokeWidth="3"
-            strokeDasharray="10 12"
-            className="misk-core-orbit"
+            strokeDasharray="9 12"
+            className="misk-core-rings"
+            pointerEvents="none"
           />
-
-          {/* Solid accent ring */}
           <circle
             cx="250"
             cy="250"
             r="103"
             fill="none"
-            stroke="rgba(0, 214, 160, 0.22)"
+            stroke="rgba(0,214,160,0.16)"
             strokeWidth="10"
-            className="misk-core-ring"
+            pointerEvents="none"
           />
 
-          {/* Center circle (hoverable, glowing) */}
+          {/* Center (hoverable) */}
           <circle
             cx="250"
             cy="250"
@@ -310,18 +409,8 @@ function QuadrantCircle3D({ size = 500 }) {
             onMouseEnter={() => setHoveredQuadrant(miskCore)}
             onMouseLeave={() => setHoveredQuadrant(null)}
           />
+          <circle cx="235" cy="235" r="55" fill="rgba(255,255,255,0.35)" pointerEvents="none" />
 
-          {/* Subtle inner highlight */}
-          <circle
-            cx="235"
-            cy="235"
-            r="55"
-            fill="rgba(255,255,255,0.35)"
-            className="misk-core-highlight"
-            pointerEvents="none"
-          />
-
-          {/* Center title */}
           <text
             x="250"
             y="246"
@@ -337,23 +426,18 @@ function QuadrantCircle3D({ size = 500 }) {
           >
             Misk Core
           </text>
-
-          {/* Center subtitle */}
           <text
             x="250"
             y="272"
             textAnchor="middle"
             fill="#0a5c49"
             fontSize="12"
-            fontWeight="600"
-            letterSpacing="0.2"
-            opacity="0.85"
-            className="misk-core-subtitle"
+            fontWeight="700"
+            opacity="0.9"
             style={{ cursor: 'pointer' }}
             onMouseEnter={() => setHoveredQuadrant(miskCore)}
             onMouseLeave={() => setHoveredQuadrant(null)}
           >
-            Cross-quadrant experiences
           </text>
         </svg>
 
@@ -394,7 +478,7 @@ function QuadrantCircle3D({ size = 500 }) {
           {quadrants[3].icon}
         </div>
 
-        {/* Tooltip chip */}
+        {/* Tooltip */}
         {hoveredQuadrant && (
           <div className={`quadrant-tooltip tooltip-${hoveredQuadrant.side}`}>
             <div className="quadrant-tooltip-title">{hoveredQuadrant.name}</div>
