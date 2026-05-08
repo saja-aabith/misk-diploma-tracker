@@ -12,11 +12,20 @@ def get_db():
     return conn
 
 def init_database():
-    """Initialize database with schema and seed data"""
+    """Initialize database with schema and seed data.
+
+    All schema changes here are additive and idempotent:
+    - CREATE TABLE IF NOT EXISTS for new tables
+    - ALTER TABLE ADD COLUMN guarded by sqlite3.OperationalError
+    - CREATE UNIQUE INDEX IF NOT EXISTS, guarded by a duplicate pre-check
+    - Seed inserts gated on COUNT(*) == 0
+    """
     conn = get_db()
     cursor = conn.cursor()
-    
-    # Create tables
+
+    # ---------------------------------------------------------------
+    # Existing tables (unchanged)
+    # ---------------------------------------------------------------
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +37,7 @@ def init_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS quadrants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +46,7 @@ def init_database():
             display_order INTEGER
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS objectives (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +58,7 @@ def init_database():
             FOREIGN KEY (quadrant_id) REFERENCES quadrants(id)
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS student_objective_progress (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +73,7 @@ def init_database():
             FOREIGN KEY (objective_id) REFERENCES objectives(id)
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS evidence_submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +88,7 @@ def init_database():
             FOREIGN KEY (objective_id) REFERENCES objectives(id)
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS evidence_reviews (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,24 +102,165 @@ def init_database():
             FOREIGN KEY (teacher_id) REFERENCES users(id)
         )
     """)
-    
+
+    # ---------------------------------------------------------------
+    # New Misk Core tables (Type 2: free-form activity log, no review)
+    # ---------------------------------------------------------------
+    # activity_categories: lookup table for the Misk Core taxonomy. Supports
+    # an optional self-referential parent for future sub-categorisation.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS activity_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            display_order INTEGER,
+            parent_category_id INTEGER,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (parent_category_id) REFERENCES activity_categories(id)
+        )
+    """)
+
+    # student_activities: free-form log entries. Not tied to objectives, never
+    # goes through teacher review. `tags` is TEXT storing a JSON-encoded array
+    # (SQLite has no array type); the route layer encodes/decodes at the edge.
+    # `activity_date` is nullable at the DB layer; the route enforces presence.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS student_activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            category_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            activity_date DATE,
+            stored_filename TEXT,
+            original_filename TEXT,
+            file_extension TEXT,
+            file_size_bytes INTEGER,
+            mime_type TEXT,
+            tags TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (student_id) REFERENCES users(id),
+            FOREIGN KEY (category_id) REFERENCES activity_categories(id)
+        )
+    """)
+
+    # ---------------------------------------------------------------
+    # Idempotent ALTER TABLE migrations on evidence_submissions
+    # ---------------------------------------------------------------
+    # Adds the metadata columns that the new authenticated upload pipeline
+    # will populate. All nullable so existing rows remain valid.
+    for ddl in (
+        "ALTER TABLE evidence_submissions ADD COLUMN stored_filename TEXT",
+        "ALTER TABLE evidence_submissions ADD COLUMN original_filename TEXT",
+        "ALTER TABLE evidence_submissions ADD COLUMN file_extension TEXT",
+        "ALTER TABLE evidence_submissions ADD COLUMN file_size_bytes INTEGER",
+        "ALTER TABLE evidence_submissions ADD COLUMN mime_type TEXT",
+    ):
+        try:
+            cursor.execute(ddl)
+        except sqlite3.OperationalError:
+            # Column already exists — safe to skip.
+            pass
+
+    # ---------------------------------------------------------------
+    # UNIQUE INDEX on evidence_reviews(submission_id, teacher_id)
+    # ---------------------------------------------------------------
+    # Prevents the same teacher from reviewing the same submission twice,
+    # which is required for the consensus rule (>=2 distinct reviewers,
+    # avg rating >= 2.5). We detect existing duplicates first; if any are
+    # found we skip index creation and surface a warning rather than
+    # silently mutating review history.
+    cursor.execute("""
+        SELECT submission_id, teacher_id, COUNT(*) AS cnt
+        FROM evidence_reviews
+        GROUP BY submission_id, teacher_id
+        HAVING cnt > 1
+    """)
+    duplicate_review_pairs = cursor.fetchall()
+    if duplicate_review_pairs:
+        print(
+            f"⚠️  evidence_reviews has {len(duplicate_review_pairs)} duplicate "
+            "(submission_id, teacher_id) pair(s). UNIQUE INDEX "
+            "idx_evidence_reviews_submission_teacher NOT created. "
+            "Reconcile duplicates manually, then restart."
+        )
+    else:
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_reviews_submission_teacher "
+            "ON evidence_reviews(submission_id, teacher_id)"
+        )
+
     conn.commit()
-    
-    # Check if data already exists
+
+    # ---------------------------------------------------------------
+    # Seeding (gated, idempotent)
+    # ---------------------------------------------------------------
     cursor.execute("SELECT COUNT(*) FROM users")
     if cursor.fetchone()[0] == 0:
         seed_data(conn)
-    
+
+    # Activity categories are seeded on a separate gate so that existing
+    # installations (which already have users but no categories) still get
+    # populated on next startup. Once present, the gate prevents re-seeding.
+    cursor.execute("SELECT COUNT(*) FROM activity_categories")
+    if cursor.fetchone()[0] == 0:
+        seed_activity_categories(conn)
+
     conn.close()
 
 def hash_password(password: str) -> str:
     """Hash password using bcrypt"""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
+
+def seed_activity_categories(conn):
+    """Seed the Misk Core activity taxonomy.
+
+    Idempotent — only invoked when activity_categories is empty.
+    NOTE: names below are PROPOSED content for MISK Schools and should be
+    confirmed by school administration before student-facing rollout. They
+    can be edited via UPDATE without any schema change.
+    """
+    cursor = conn.cursor()
+    categories = [
+        ("Volunteering & Community Service",
+         "Activities serving the community, charitable work, and giving back.",
+         1),
+        ("Cultural Heritage",
+         "Saudi heritage, traditions, museums, and cultural exploration.",
+         2),
+        ("Sports & Athletics",
+         "Sports teams, athletic competitions, fitness events, and physical activity.",
+         3),
+        ("Arts & Creative Expression",
+         "Visual art, music, theatre, creative writing, and design.",
+         4),
+        ("Entrepreneurship & Innovation",
+         "Business projects, startups, hackathons, and innovation challenges.",
+         5),
+        ("Religious & Spiritual Activities",
+         "Quran study, Islamic studies events, and religious programs.",
+         6),
+        ("Personal Development & Skills",
+         "Courses, workshops, languages, hobbies, and self-directed learning.",
+         7),
+    ]
+    for name, description, order in categories:
+        cursor.execute(
+            "INSERT INTO activity_categories "
+            "(name, description, display_order, is_active) "
+            "VALUES (?, ?, ?, 1)",
+            (name, description, order)
+        )
+    conn.commit()
+    print("✓ Activity categories seeded")
+
+
 def seed_data(conn):
     """Seed database with realistic test data"""
     cursor = conn.cursor()
-    
+
     # Seed quadrants
     quadrants = [
         ("Academic", "#E74C3C", 1),
@@ -118,65 +268,66 @@ def seed_data(conn):
         ("National Identity", "#2ECC71", 3),
         ("Leadership", "#F39C12", 4)
     ]
-    
+
     for name, color, order in quadrants:
         cursor.execute(
             "INSERT INTO quadrants (name, color_hex, display_order) VALUES (?, ?, ?)",
             (name, color, order)
         )
-    
-    # Seed objectives (4 per quadrant)
-# Seed objectives (KPIs) per quadrant
-        objectives = [
-            # Academic (quadrant_id = 1)
-            (1, "IGCSE Performance",
-                "Track and evidence performance in IGCSE subjects, including mock exams, coursework and final grades."),
-            (1, "IAL Performance",
-                "Track and evidence performance in International A Level (IAL) subjects, including mock exams and final grades."),
-            (1, "National Exams (NAFS / Qudrat / Tahsili)",
-                "Record results and preparation evidence for national exams such as NAFS G6, NAFS G9, Qudrat and Tahsili."),
-            (1, "EPQ-style Research Project",
-                "Complete and document an Extended Project Qualification (EPQ) style research project with proposal, product and reflection."),
 
-            # Internship (quadrant_id = 2)
-            (2, "Industry Internship Report",
-                "Complete an industry internship and submit a structured report capturing responsibilities, impact and reflections."),
-            (2, "Career Planning",
-                "Develop and maintain a multi-year career plan with clear milestones, target pathways and action steps."),
+    # Seed objectives (KPIs) per quadrant
+    # Indentation fixed in this chunk (the previous version was an
+    # IndentationError; the function only runs on empty DB so it had been
+    # masked in dev). Logic and content unchanged.
+    objectives = [
+        # Academic (quadrant_id = 1)
+        (1, "IGCSE Performance",
+            "Track and evidence performance in IGCSE subjects, including mock exams, coursework and final grades."),
+        (1, "IAL Performance",
+            "Track and evidence performance in International A Level (IAL) subjects, including mock exams and final grades."),
+        (1, "National Exams (NAFS / Qudrat / Tahsili)",
+            "Record results and preparation evidence for national exams such as NAFS G6, NAFS G9, Qudrat and Tahsili."),
+        (1, "EPQ-style Research Project",
+            "Complete and document an Extended Project Qualification (EPQ) style research project with proposal, product and reflection."),
 
-            # National Identity (quadrant_id = 3)
-            (3, "Arabic Language Development",
-                "Demonstrate growth in Arabic language through coursework, assessments and authentic communication tasks."),
-            (3, "National Heritage Study",
-                "Research, document and present significant aspects of Saudi national heritage, history or culture."),
+        # Internship (quadrant_id = 2)
+        (2, "Industry Internship Report",
+            "Complete an industry internship and submit a structured report capturing responsibilities, impact and reflections."),
+        (2, "Career Planning",
+            "Develop and maintain a multi-year career plan with clear milestones, target pathways and action steps."),
 
-            # Leadership (quadrant_id = 4)
-            (4, "CMI-linked Leadership Competencies",
-                "Work towards CMI (or equivalent) leadership competencies, evidencing application in real projects and roles."),
-            (4, "Presentation Skills",
-                "Plan, deliver and reflect on high-quality presentations to different audiences, demonstrating confident communication."),
-        ]
+        # National Identity (quadrant_id = 3)
+        (3, "Arabic Language Development",
+            "Demonstrate growth in Arabic language through coursework, assessments and authentic communication tasks."),
+        (3, "National Heritage Study",
+            "Research, document and present significant aspects of Saudi national heritage, history or culture."),
 
-    
+        # Leadership (quadrant_id = 4)
+        (4, "CMI-linked Leadership Competencies",
+            "Work towards CMI (or equivalent) leadership competencies, evidencing application in real projects and roles."),
+        (4, "Presentation Skills",
+            "Plan, deliver and reflect on high-quality presentations to different audiences, demonstrating confident communication."),
+    ]
+
     for quad_id, title, desc in objectives:
         cursor.execute(
             "INSERT INTO objectives (quadrant_id, title, description, max_points) VALUES (?, ?, ?, ?)",
             (quad_id, title, desc, 100)
         )
-    
+
     # Seed teachers
     password_hash = hash_password("password123")
     teachers = [
         ("teacher1", "teacher1@miskschools.edu.sa", "Mr. Murray Thomas", "teacher"),
         ("teacher2", "teacher2@miskschools.edu.sa", "Mr. Ahmed Al-Rashid", "teacher")
     ]
-    
+
     for username, email, full_name, role in teachers:
         cursor.execute(
             "INSERT INTO users (username, email, password_hash, role, full_name) VALUES (?, ?, ?, ?, ?)",
             (username, email, password_hash, role, full_name)
         )
-    
+
     # Seed students with realistic Saudi/international names
     students = [
         ("student1", "ahmed.aldosari@student.misk.sa", "Ahmed Al-Dosari"),
@@ -200,31 +351,32 @@ def seed_data(conn):
         ("student19", "nawaf.alrashid@student.misk.sa", "Nawaf Al-Rashid"),
         ("student20", "shahad.alkhalifa@student.misk.sa", "Shahad Al-Khalifa")
     ]
-    
+
     for username, email, full_name in students:
         cursor.execute(
             "INSERT INTO users (username, email, password_hash, role, full_name) VALUES (?, ?, ?, ?, ?)",
             (username, email, password_hash, "student", full_name)
         )
-    
+
     conn.commit()
-    
+
     # Get student IDs
     cursor.execute("SELECT id FROM users WHERE role='student'")
     student_ids = [row[0] for row in cursor.fetchall()]
-    
+
     # Get objective IDs
     cursor.execute("SELECT id FROM objectives")
     objective_ids = [row[0] for row in cursor.fetchall()]
-    
-    # Seed realistic progress data for each student
+
+    # Seed realistic progress data for each student.
+    # KNOWN ISSUE: 'in_progress' is NOT in the documented status enum
+    # (not_started | submitted | pending_review | approved | rejected).
+    # Preserved as-is in this chunk; flagged for separate reconciliation.
     for student_id in student_ids:
-        # Each student has varied completion across objectives
         for obj_id in objective_ids:
-            # Random completion (15-95%)
             completion = random.choice([0, 15, 25, 40, 55, 65, 75, 85, 95, 100])
             status = "not_started"
-            
+
             if completion == 0:
                 status = "not_started"
             elif completion < 50:
@@ -233,21 +385,21 @@ def seed_data(conn):
                 status = "pending_review"
             else:
                 status = "approved"
-            
+
             cursor.execute(
-                """INSERT INTO student_objective_progress 
+                """INSERT INTO student_objective_progress
                    (student_id, objective_id, current_points, completion_percentage, status)
                    VALUES (?, ?, ?, ?, ?)""",
                 (student_id, obj_id, completion, completion, status)
             )
-    
+
     # Seed evidence submissions (realistic distribution)
     file_types = ["report.pdf", "presentation.pptx", "video.mp4", "essay.docx", "project.pdf"]
     statuses = ["submitted", "under_review", "approved", "rejected"]
-    
+
     # Generate 60-80 submissions across all students
     num_submissions = random.randint(60, 80)
-    
+
     for _ in range(num_submissions):
         student_id = random.choice(student_ids)
         obj_id = random.choice(objective_ids)
@@ -261,21 +413,23 @@ def seed_data(conn):
             "Comprehensive report on this topic"
         ])
         status = random.choice(statuses)
-        
+
         # Submission date in last 30 days
         days_ago = random.randint(0, 30)
         submission_date = datetime.now() - timedelta(days=days_ago)
-        
+
         cursor.execute(
-            """INSERT INTO evidence_submissions 
+            """INSERT INTO evidence_submissions
                (student_id, objective_id, file_path, file_name, description, status, submission_date)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (student_id, obj_id, file_path, file_name, description, status, submission_date)
         )
-        
+
         submission_id = cursor.lastrowid
-        
-        # Add reviews for some submissions (30-50% have reviews)
+
+        # Add reviews for some submissions (~40% have reviews).
+        # Each submission receives at most one review here, so the new UNIQUE
+        # INDEX on (submission_id, teacher_id) is satisfied by construction.
         if random.random() < 0.4:
             teacher_id = random.choice([3, 4])  # teacher1 or teacher2
             rating = random.randint(2, 5)
@@ -287,13 +441,13 @@ def seed_data(conn):
                 "Needs more detail in analysis section",
                 "Great initiative and creativity"
             ])
-            
+
             cursor.execute(
-                """INSERT INTO evidence_reviews 
+                """INSERT INTO evidence_reviews
                    (submission_id, teacher_id, rating, feedback, decision)
                    VALUES (?, ?, ?, ?, ?)""",
                 (submission_id, teacher_id, rating, feedback, decision)
             )
-    
+
     conn.commit()
     print(" Seed data created successfully")
