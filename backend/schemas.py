@@ -1,6 +1,6 @@
 from typing import TypeVar, Generic, Optional, List
 from datetime import date, datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ============================================================
 # Generic API wrappers (existing — DO NOT change shape/behaviour)
@@ -21,13 +21,170 @@ class ErrorResponse(BaseModel):
 
 
 # ============================================================
+# Authentication models
+# ============================================================
+# Migrated verbatim from the legacy backend/models.py during Chunk 19.
+# Every field, type, default, and optionality is preserved exactly so that
+# request/response shapes do not change. Routes that import these names
+# from `models` continue to work via the re-export shim in models.py.
+
+class UserRegister(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    role: str
+    full_name: Optional[str] = None
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+    full_name: Optional[str]
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    user: UserResponse
+
+
+# ============================================================
+# Student dashboard models
+# ============================================================
+class ObjectiveProgress(BaseModel):
+    id: int
+    quadrant_id: int
+    quadrant_name: str
+    title: str
+    description: Optional[str]
+    current_points: int
+    max_points: int
+    completion_percentage: float
+    status: str
+    submission_count: int
+    approved_count: int
+
+
+class QuadrantSummary(BaseModel):
+    id: int
+    name: str
+    color: str
+    completion_percentage: float
+    objectives_completed: int
+    total_objectives: int
+
+
+class StudentDashboard(BaseModel):
+    student_id: int
+    student_name: str
+    overall_completion_percentage: float
+    quadrants: List[QuadrantSummary]
+
+
+# ============================================================
+# Submission / review models (Type 1: evidence submissions)
+# ============================================================
+# SubmissionReview is declared first because it is referenced by both
+# Submission (student-facing) and SubmissionDetail (teacher-facing).
+
+class SubmissionReview(BaseModel):
+    id: int
+    teacher_id: int
+    teacher_name: str
+    rating: int
+    feedback: Optional[str]
+    decision: str
+    reviewed_at: datetime
+
+
+class Submission(BaseModel):
+    id: int
+    student_id: int
+    objective_id: int
+    objective_title: str
+    quadrant_name: str
+    file_name: str
+    file_path: str
+    description: Optional[str]
+    status: str
+    submission_date: datetime
+    review_count: int
+    reviews: List[SubmissionReview]
+
+
+# ============================================================
+# Teacher review / report models
+# ============================================================
+class ReviewSubmission(BaseModel):
+    submission_id: int
+    rating: int
+    decision: str
+    feedback: Optional[str] = None
+
+
+class SubmissionDetail(BaseModel):
+    id: int
+    student_id: int
+    student_name: str
+    objective_id: int
+    objective_title: str
+    quadrant_id: int
+    quadrant_name: str
+    file_name: str
+    file_path: str
+    description: Optional[str]
+    status: str
+    submission_date: datetime
+    approval_progress: str
+    reviews: List[SubmissionReview]
+
+
+class ObjectiveReport(BaseModel):
+    objective_id: int
+    title: str
+    completion_percentage: float
+    status: str
+    submissions: int
+    approved: int
+
+
+class QuadrantReport(BaseModel):
+    quadrant_id: int
+    quadrant_name: str
+    color: str
+    completion_percentage: float
+    objectives: List[ObjectiveReport]
+
+
+class SubmissionSummary(BaseModel):
+    total_submitted: int
+    total_approved: int
+    pending_review: int
+    rejected: int
+
+
+class StudentReport(BaseModel):
+    student_id: int
+    student_name: str
+    overall_completion_percentage: float
+    quadrant_reports: List[QuadrantReport]
+    submission_summary: SubmissionSummary
+
+
+# ============================================================
 # Misk Core schemas (Type 2: free-form activity log, no review)
 # ============================================================
 # Domain language reminder:
 #   - "Misk Core activity" = free-form student log entry, NOT teacher-reviewed.
-#   - Distinct pipeline from "evidence submission" (Type 1, in models.py).
-# These constants are exported so the route layer (Chunk 6) imports the same
-# values and validation rules don't drift between schema and handler.
+#   - Distinct pipeline from "evidence submission" (Type 1, defined above).
+# These constants are exported so the route layer imports the same values
+# and validation rules don't drift between schema and handler.
 
 MAX_ACTIVITY_TITLE_LEN = 200
 MAX_ACTIVITY_DESCRIPTION_LEN = 4000
@@ -168,8 +325,8 @@ class StudentProfileOut(BaseModel):
     MVP shape: identity + activities. Chunk 7 (teacher.py) will determine
     whether to extend with submission/quadrant breakdowns; any extension
     must be additive (new optional fields only) so existing consumers stay
-    compatible. Distinct from StudentReport in models.py, which backs the
-    older /teacher/report/{student_id} endpoint.
+    compatible. Distinct from StudentReport above, which backs the older
+    /teacher/report/{student_id} endpoint.
     """
     student_id: int
     student_name: str

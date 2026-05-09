@@ -3,6 +3,7 @@
 # Do not change storage backend without explicit school administration approval.
 
 import json
+import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -163,7 +164,16 @@ async def submit_review(
 
     teacher_id = current_user['user_id']
 
-    # Check if teacher already reviewed
+    # Check if teacher already reviewed.
+    # NOTE: this pre-check is the fast/cheap path for the common "user
+    # already reviewed and is trying again" case. It does NOT close the
+    # race against a concurrent request from the same teacher (e.g. a
+    # double-click): two requests can both pass this SELECT before either
+    # reaches the INSERT below. The UNIQUE INDEX
+    # idx_evidence_reviews_submission_teacher (created in database.py)
+    # closes that window, and the IntegrityError handler around the
+    # INSERT below converts the constraint violation into the same 400
+    # response shape the pre-check returns.
     cursor.execute("""
         SELECT * FROM evidence_reviews
         WHERE submission_id = ? AND teacher_id = ?
@@ -172,11 +182,18 @@ async def submit_review(
     if cursor.fetchone():
         raise HTTPException(status_code=400, detail="You have already reviewed this submission")
 
-    # Insert review
-    cursor.execute("""
-        INSERT INTO evidence_reviews (submission_id, teacher_id, rating, feedback, decision)
-        VALUES (?, ?, ?, ?, ?)
-    """, (review.submission_id, teacher_id, review.rating, review.feedback, review.decision))
+    # Insert review. UNIQUE(submission_id, teacher_id) enforces
+    # one-review-per-teacher-per-submission at the DB layer; on a race the
+    # loser raises sqlite3.IntegrityError which we map to the same 400 the
+    # pre-check returns so the frontend has a single error path to handle.
+    try:
+        cursor.execute("""
+            INSERT INTO evidence_reviews (submission_id, teacher_id, rating, feedback, decision)
+            VALUES (?, ?, ?, ?, ?)
+        """, (review.submission_id, teacher_id, review.rating, review.feedback, review.decision))
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="You have already reviewed this submission")
 
     review_id = cursor.lastrowid
 

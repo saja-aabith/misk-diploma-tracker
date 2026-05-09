@@ -9,7 +9,7 @@ function UploadModal({ objective, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!file) {
       setError('Please select a file');
       return;
@@ -53,12 +53,12 @@ function UploadModal({ objective, onClose, onSuccess }) {
             <label>File</label>
             <input
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.docx,.mp4,.pptx"
+              accept=".pdf,.jpg,.jpeg,.png,.docx,.mp4"
               onChange={(e) => setFile(e.target.files[0])}
               required
             />
             <small style={{ color: '#7f8c8d' }}>
-              Allowed: PDF, JPG, PNG, DOCX, MP4, PPTX (max 50MB)
+              Allowed: PDF, JPG, PNG, DOCX, MP4 (max 50MB)
             </small>
           </div>
 

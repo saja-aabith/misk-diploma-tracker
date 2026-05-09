@@ -1,128 +1,55 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
-from datetime import datetime
+# DEPRECATED LOCATION — re-exports from schemas.py for backwards compatibility.
+#
+# As of Chunk 19, all Pydantic models live in schemas.py. This module exists
+# as a thin re-export shim so existing `from models import X` imports across
+# the route layer keep working without a coordinated rewrite of every file.
+#
+# New code should import from `schemas` directly. Do NOT add new models here
+# — add them to schemas.py.
+#
+# This file will be removed in a future chunk once every `from models import`
+# site has been migrated. Until then, the contract of this module is
+# strictly "preserve the names that used to be defined here, nothing more."
+# In particular, this shim deliberately does NOT re-export APIResponse,
+# ErrorResponse, or any of the Misk Core schemas — those have always lived
+# in schemas.py and consumers already import them from there.
 
-# Authentication Models
-class UserRegister(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    role: str
-    full_name: Optional[str] = None
+from schemas import (
+    # Authentication
+    UserRegister,
+    UserLogin,
+    UserResponse,
+    TokenResponse,
+    # Student dashboard
+    ObjectiveProgress,
+    QuadrantSummary,
+    StudentDashboard,
+    # Submission / review (Type 1)
+    SubmissionReview,
+    Submission,
+    # Teacher review / report
+    ReviewSubmission,
+    SubmissionDetail,
+    ObjectiveReport,
+    QuadrantReport,
+    SubmissionSummary,
+    StudentReport,
+)
 
-class UserLogin(BaseModel):
-    username: str
-    password: str
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    email: str
-    role: str
-    full_name: Optional[str]
-
-class TokenResponse(BaseModel):
-    access_token: str
-    user: UserResponse
-
-# Student Models
-class ObjectiveProgress(BaseModel):
-    id: int
-    quadrant_id: int
-    quadrant_name: str
-    title: str
-    description: Optional[str]
-    current_points: int
-    max_points: int
-    completion_percentage: float
-    status: str
-    submission_count: int
-    approved_count: int
-
-class QuadrantSummary(BaseModel):
-    id: int
-    name: str
-    color: str
-    completion_percentage: float
-    objectives_completed: int
-    total_objectives: int
-
-class StudentDashboard(BaseModel):
-    student_id: int
-    student_name: str
-    overall_completion_percentage: float
-    quadrants: List[QuadrantSummary]
-
-class SubmissionReview(BaseModel):
-    id: int
-    teacher_id: int
-    teacher_name: str
-    rating: int
-    feedback: Optional[str]
-    decision: str
-    reviewed_at: datetime
-
-class Submission(BaseModel):
-    id: int
-    student_id: int
-    objective_id: int
-    objective_title: str
-    quadrant_name: str
-    file_name: str
-    file_path: str
-    description: Optional[str]
-    status: str
-    submission_date: datetime
-    review_count: int
-    reviews: List[SubmissionReview]
-
-# Teacher Models
-class ReviewSubmission(BaseModel):
-    submission_id: int
-    rating: int
-    decision: str
-    feedback: Optional[str] = None
-
-class SubmissionDetail(BaseModel):
-    id: int
-    student_id: int
-    student_name: str
-    objective_id: int
-    objective_title: str
-    quadrant_id: int
-    quadrant_name: str
-    file_name: str
-    file_path: str
-    description: Optional[str]
-    status: str
-    submission_date: datetime
-    approval_progress: str
-    reviews: List[SubmissionReview]
-
-class ObjectiveReport(BaseModel):
-    objective_id: int
-    title: str
-    completion_percentage: float
-    status: str
-    submissions: int
-    approved: int
-
-class QuadrantReport(BaseModel):
-    quadrant_id: int
-    quadrant_name: str
-    color: str
-    completion_percentage: float
-    objectives: List[ObjectiveReport]
-
-class SubmissionSummary(BaseModel):
-    total_submitted: int
-    total_approved: int
-    pending_review: int
-    rejected: int
-
-class StudentReport(BaseModel):
-    student_id: int
-    student_name: str
-    overall_completion_percentage: float
-    quadrant_reports: List[QuadrantReport]
-    submission_summary: SubmissionSummary
+__all__ = [
+    "UserRegister",
+    "UserLogin",
+    "UserResponse",
+    "TokenResponse",
+    "ObjectiveProgress",
+    "QuadrantSummary",
+    "StudentDashboard",
+    "SubmissionReview",
+    "Submission",
+    "ReviewSubmission",
+    "SubmissionDetail",
+    "ObjectiveReport",
+    "QuadrantReport",
+    "SubmissionSummary",
+    "StudentReport",
+]
