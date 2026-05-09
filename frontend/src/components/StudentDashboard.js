@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { student } from '../api/client';
 import { getUser, logout } from '../utils/auth';
 import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
+import ActivityLogModal from './ActivityLogModal';
+import AttachmentLink from './AttachmentLink';
 
 /**
  * Helper: clamp any % between 0 and 100
@@ -62,8 +64,6 @@ const ObjectiveProgressMeter = ({ percent, color }) => {
   );
 };
 
-const MISK_CORE_STORAGE_KEY = 'misk_core_timeline_v1';
-
 function StudentDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [objectives, setObjectives] = useState([]);
@@ -74,24 +74,20 @@ function StudentDashboard() {
   const [activeTab, setActiveTab] = useState('progress');
   const [loading, setLoading] = useState(true);
 
-  // ✅ Misk Core Timeline state
-  const [miskCoreItems, setMiskCoreItems] = useState([]);
-  const [showMiskCoreModal, setShowMiskCoreModal] = useState(false);
-  const [mcTitle, setMcTitle] = useState('');
-  const [mcType, setMcType] = useState('CCAP');
-  const [mcDate, setMcDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [mcDesc, setMcDesc] = useState('');
-  const [mcFile, setMcFile] = useState(null);
-  const [mcSaving, setMcSaving] = useState(false);
-  const [mcError, setMcError] = useState('');
+  // Misk Core (backend-backed)
+  const [activities, setActivities] = useState([]);
+  const [activitiesError, setActivitiesError] = useState('');
+  const [showActivityModal, setShowActivityModal] = useState(false);
 
+  // user kept for parity with original (unused locally)
+  // eslint-disable-next-line no-unused-vars
   const user = getUser();
 
   useEffect(() => {
     loadDashboard();
     loadObjectives();
     loadSubmissions();
-    loadMiskCoreTimeline();
+    loadActivities();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -124,29 +120,16 @@ function StudentDashboard() {
     }
   };
 
-  // ✅ Local timeline fallback
-  const loadMiskCoreTimeline = () => {
+  const loadActivities = async () => {
     try {
-      const raw = localStorage.getItem(MISK_CORE_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setMiskCoreItems(parsed);
-    } catch (e) {
-      console.warn('Failed to load Misk Core timeline from storage:', e);
+      const response = await student.getActivities();
+      setActivities(response?.data?.activities || []);
+      setActivitiesError('');
+    } catch (error) {
+      console.error('Failed to load activities:', error);
+      setActivitiesError('Could not load activities.');
     }
   };
-
-  const persistMiskCoreTimeline = (items) => {
-    try {
-      localStorage.setItem(MISK_CORE_STORAGE_KEY, JSON.stringify(items));
-    } catch (e) {
-      console.warn('Failed to save Misk Core timeline to storage:', e);
-    }
-  };
-
-  const sortedMiskCoreItems = useMemo(() => {
-    return [...miskCoreItems].sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [miskCoreItems]);
 
   const handleQuadrantClick = (quadrant) => {
     setSelectedQuadrant(quadrant);
@@ -165,75 +148,18 @@ function StudentDashboard() {
     loadSubmissions();
   };
 
-  // ✅ Add a timeline entry (tries backend endpoint if you add it later)
-  const handleSaveMiskCore = async (e) => {
-    e.preventDefault();
-    setMcError('');
-
-    if (!mcTitle.trim()) {
-      setMcError('Please enter a title (e.g., CCAP Event, Trip, Competition, Project 10).');
-      return;
+  const handleActivitySuccess = (newActivity) => {
+    setShowActivityModal(false);
+    if (newActivity && newActivity.id) {
+      setActivities((prev) => [newActivity, ...prev]);
     }
-
-    setMcSaving(true);
-
-    const newItem = {
-      id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      title: mcTitle.trim(),
-      type: mcType,
-      date: mcDate,
-      description: mcDesc.trim(),
-      fileName: mcFile?.name || '',
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      // If you later add an API method, this will use it automatically:
-      // student.uploadMiskCoreExperience(formData)
-      if (typeof student.uploadMiskCoreExperience === 'function') {
-        const formData = new FormData();
-        formData.append('title', newItem.title);
-        formData.append('type', newItem.type);
-        formData.append('date', newItem.date);
-        formData.append('description', newItem.description);
-        if (mcFile) formData.append('file', mcFile);
-
-        await student.uploadMiskCoreExperience(formData);
-
-        // If backend returns updated items, you can fetch here.
-        // For now we also add locally for instant UI feedback:
-      }
-
-      const updated = [newItem, ...miskCoreItems];
-      setMiskCoreItems(updated);
-      persistMiskCoreTimeline(updated);
-
-      // reset
-      setShowMiskCoreModal(false);
-      setMcTitle('');
-      setMcType('CCAP');
-      setMcDate(new Date().toISOString().slice(0, 10));
-      setMcDesc('');
-      setMcFile(null);
-    } catch (err) {
-      console.error(err);
-      setMcError(err.response?.data?.detail || 'Failed to save experience.');
-    } finally {
-      setMcSaving(false);
-    }
-  };
-
-  const handleDeleteMiskCoreItem = (id) => {
-    const updated = miskCoreItems.filter((x) => x.id !== id);
-    setMiskCoreItems(updated);
-    persistMiskCoreTimeline(updated);
+    loadActivities();
   };
 
   if (loading) return <div className="loading">Loading...</div>;
 
   const overallPct = clampPercent(dashboardData?.overall_completion_percentage);
 
-  // ✅ Tab styles: more visible text
   const tabBaseStyle = {
     color: 'rgba(255,255,255,0.88)',
     fontWeight: 700,
@@ -290,7 +216,6 @@ function StudentDashboard() {
 
         {activeTab === 'progress' && (
           <>
-            {/* Main Progress Card (existing) */}
             <div className="card">
               <div className="card-header-inline">
                 <h3>Your Diploma Progress</h3>
@@ -306,7 +231,10 @@ function StudentDashboard() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'center', margin: '26px 0 10px' }}>
-                <QuadrantCircle3D size={400} />
+                <QuadrantCircle3D
+                  size={400}
+                  onMiskCoreClick={() => setShowActivityModal(true)}
+                />
               </div>
 
               <div className="quadrant-info quadrant-info--modern">
@@ -320,14 +248,13 @@ function StudentDashboard() {
               </div>
             </div>
 
-            {/* ✅ NEW: MISK CORE TIMELINE (no % meter) */}
             <div className="card">
               <div className="card-header-inline">
-                <h3>Misk Core — Experiences Timeline</h3>
+                <h3>Misk Core — Activity Log</h3>
                 <button
                   className="btn-upload"
                   style={{ maxWidth: 220 }}
-                  onClick={() => setShowMiskCoreModal(true)}
+                  onClick={() => setShowActivityModal(true)}
                 >
                   Add Experience
                 </button>
@@ -337,14 +264,20 @@ function StudentDashboard() {
                 Track CCAP, trips, competitions, Project 10, and other experiences linked to all four quadrants.
               </div>
 
+              {activitiesError && (
+                <div className="error-message" style={{ marginTop: 12 }}>
+                  {activitiesError}
+                </div>
+              )}
+
               <div style={{ marginTop: 18 }}>
-                {sortedMiskCoreItems.length === 0 ? (
+                {activities.length === 0 ? (
                   <div style={{ padding: 14, borderRadius: 12, background: 'rgba(0,0,0,0.03)' }}>
-                    No Misk Core experiences yet — click <strong>Add Experience</strong> to start your timeline.
+                    No Misk Core activities yet — click <strong>Add Experience</strong> to start your log.
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gap: 12 }}>
-                    {sortedMiskCoreItems.map((item) => (
+                    {activities.map((item) => (
                       <div
                         key={item.id}
                         style={{
@@ -368,26 +301,14 @@ function StudentDashboard() {
                                 letterSpacing: '0.02em',
                               }}
                             >
-                              {item.type}
+                              {item.category_name}
                             </span>
-                            <span style={{ fontSize: 12, color: '#6d7f7a' }}>
-                              {new Date(item.date).toLocaleDateString()}
-                            </span>
+                            {item.activity_date && (
+                              <span style={{ fontSize: 12, color: '#6d7f7a' }}>
+                                {new Date(item.activity_date).toLocaleDateString()}
+                              </span>
+                            )}
                           </div>
-
-                          <button
-                            onClick={() => handleDeleteMiskCoreItem(item.id)}
-                            style={{
-                              border: 'none',
-                              background: 'transparent',
-                              color: '#9aa7a3',
-                              cursor: 'pointer',
-                              fontWeight: 700,
-                            }}
-                            title="Remove from timeline"
-                          >
-                            ✕
-                          </button>
                         </div>
 
                         <div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: '#0b3f33' }}>
@@ -400,9 +321,32 @@ function StudentDashboard() {
                           </div>
                         )}
 
-                        {item.fileName && (
+                        {Array.isArray(item.tags) && item.tags.length > 0 && (
+                          <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {item.tags.map((t) => (
+                              <span
+                                key={t}
+                                style={{
+                                  fontSize: 11,
+                                  padding: '4px 8px',
+                                  borderRadius: 999,
+                                  background: 'rgba(0,0,0,0.05)',
+                                  color: '#3f534f',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                #{t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {item.stored_filename && (
                           <div style={{ marginTop: 10, fontSize: 13, color: '#4e615d' }}>
-                            Attachment: <strong>{item.fileName}</strong>
+                            <AttachmentLink
+                              storedFilename={item.stored_filename}
+                              originalFilename={item.original_filename}
+                            />
                           </div>
                         )}
                       </div>
@@ -412,7 +356,6 @@ function StudentDashboard() {
               </div>
             </div>
 
-            {/* Objectives (existing) */}
             {selectedQuadrant && objectives.length > 0 && (
               <div className="card">
                 <h3>{selectedQuadrant.name} – Objectives</h3>
@@ -474,7 +417,18 @@ function StudentDashboard() {
                     {submission.quadrant_name} • {new Date(submission.submission_date).toLocaleDateString()}
                   </div>
 
-                  <div className="submission-meta">File: {submission.file_name}</div>
+                  <div className="submission-meta">
+                    File: {submission.file_name}
+                    {submission.stored_filename && (
+                      <>
+                        {' '}
+                        <AttachmentLink
+                          storedFilename={submission.stored_filename}
+                          originalFilename={submission.file_name}
+                        />
+                      </>
+                    )}
+                  </div>
 
                   {submission.description && (
                     <div className="submission-meta">Description: {submission.description}</div>
@@ -504,7 +458,6 @@ function StudentDashboard() {
         )}
       </div>
 
-      {/* Existing Objective Upload Modal */}
       {showUploadModal && (
         <UploadModal
           objective={selectedObjective}
@@ -513,79 +466,11 @@ function StudentDashboard() {
         />
       )}
 
-      {/* ✅ NEW: Misk Core Add Experience Modal */}
-      {showMiskCoreModal && (
-        <div className="modal-overlay" onClick={() => setShowMiskCoreModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-            <div className="modal-header">
-              <h3>Add Misk Core Experience</h3>
-              <button className="btn-close" onClick={() => setShowMiskCoreModal(false)}>
-                ×
-              </button>
-            </div>
-
-            {mcError && <div className="error-message">{mcError}</div>}
-
-            <form onSubmit={handleSaveMiskCore}>
-              <div className="form-group">
-                <label>Type</label>
-                <select value={mcType} onChange={(e) => setMcType(e.target.value)}>
-                  <option value="CCAP">CCAP</option>
-                  <option value="Trip">Trip</option>
-                  <option value="Competition">Competition</option>
-                  <option value="Project 10">Project 10</option>
-                  <option value="Volunteering">Volunteering</option>
-                  <option value="Workshop">Workshop</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Date</label>
-                <input type="date" value={mcDate} onChange={(e) => setMcDate(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label>Title</label>
-                <input
-                  type="text"
-                  value={mcTitle}
-                  onChange={(e) => setMcTitle(e.target.value)}
-                  placeholder="e.g., CCAP Leadership Summit, National Museum Trip, Math Olympiad, Project 10 Showcase..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Description (Optional)</label>
-                <textarea
-                  value={mcDesc}
-                  onChange={(e) => setMcDesc(e.target.value)}
-                  placeholder="What did you do? What was your role? Any outcomes/awards?"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Attachment (Optional)</label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.docx,.mp4,.pptx"
-                  onChange={(e) => setMcFile(e.target.files[0])}
-                />
-                <small style={{ color: '#7f8c8d' }}>
-                  Allowed: PDF, JPG, PNG, DOCX, MP4, PPTX
-                </small>
-              </div>
-
-              <button type="submit" className="btn-login" disabled={mcSaving}>
-                {mcSaving ? 'Saving...' : 'Save Experience'}
-              </button>
-
-              <div style={{ marginTop: 10, fontSize: 12, color: '#7f8c8d' }}>
-                Note: If your backend endpoint isn’t added yet, this timeline is saved locally on this device.
-              </div>
-            </form>
-          </div>
-        </div>
+      {showActivityModal && (
+        <ActivityLogModal
+          onClose={() => setShowActivityModal(false)}
+          onSuccess={handleActivitySuccess}
+        />
       )}
     </div>
   );

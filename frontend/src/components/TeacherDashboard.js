@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { teacher } from '../api/client';
 import { getUser, logout } from '../utils/auth';
+import AttachmentLink from './AttachmentLink';
+
+// Tolerant error-detail extractor: backend returns a string for legacy
+// handlers and a {code, message} dict for migrated handlers (Chunk 7).
+// Used only by the new code paths in this file; existing handlers keep
+// their current `error.response?.data?.detail` access pattern per the
+// per-handler migration discipline.
+function extractErrorMessage(err, fallback) {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string') return detail.message;
+  }
+  return fallback;
+}
 
 function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('review');
@@ -15,6 +30,13 @@ function TeacherDashboard() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentReport, setStudentReport] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Student Profiles tab — separate state from Student Reports so the two
+  // tabs don't clobber each other's selection or fetched payload.
+  const [selectedProfileStudent, setSelectedProfileStudent] = useState(null);
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [studentProfileError, setStudentProfileError] = useState('');
+  const [studentProfileLoading, setStudentProfileLoading] = useState(false);
 
   const user = getUser();
 
@@ -35,7 +57,6 @@ function TeacherDashboard() {
   };
 
   const loadStudents = async () => {
-    // Get unique students from submissions
     try {
       const response = await teacher.getSubmissions('all');
       const uniqueStudents = [
@@ -110,11 +131,36 @@ function TeacherDashboard() {
     }
   };
 
+  // Student Profiles tab
+  const loadStudentProfile = async (studentId) => {
+    setStudentProfileLoading(true);
+    setStudentProfileError('');
+    try {
+      const response = await teacher.getStudentProfile(studentId);
+      setStudentProfile(response.data);
+    } catch (error) {
+      console.error('Failed to load student profile:', error);
+      setStudentProfile(null);
+      setStudentProfileError(extractErrorMessage(error, 'Could not load student profile.'));
+    } finally {
+      setStudentProfileLoading(false);
+    }
+  };
+
+  const handleProfileStudentSelect = (studentId) => {
+    setSelectedProfileStudent(studentId);
+    if (studentId) {
+      loadStudentProfile(studentId);
+    } else {
+      setStudentProfile(null);
+      setStudentProfileError('');
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
 
-  // ✅ Make the tabs more visible (works even if CSS is weak)
   const tabBase = {
     position: 'relative',
     padding: '14px 18px',
@@ -180,6 +226,15 @@ function TeacherDashboard() {
           >
             Student Reports
             {activeTab === 'report' && <span style={activeUnderline} />}
+          </button>
+
+          <button
+            className={`tab ${activeTab === 'profile' ? 'active' : ''}`}
+            onClick={() => setActiveTab('profile')}
+            style={{ ...tabBase, ...(activeTab === 'profile' ? tabActive : tabInactive) }}
+          >
+            Student Profiles
+            {activeTab === 'profile' && <span style={activeUnderline} />}
           </button>
         </div>
 
@@ -279,6 +334,131 @@ function TeacherDashboard() {
                     <span>Pending: {studentReport.submission_summary.pending_review}</span>
                     <span>Rejected: {studentReport.submission_summary.rejected}</span>
                   </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'profile' && (
+          <>
+            <div className="filter-bar">
+              <select
+                value={selectedProfileStudent || ''}
+                onChange={(e) => handleProfileStudentSelect(e.target.value)}
+              >
+                <option value="">Select a student...</option>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {studentProfileError && (
+              <div className="error-message" style={{ marginBottom: 12 }}>
+                {studentProfileError}
+              </div>
+            )}
+
+            {studentProfileLoading && <div className="loading">Loading profile…</div>}
+
+            {studentProfile && !studentProfileLoading && (
+              <div className="card">
+                <h3>{studentProfile.student_name}</h3>
+                <div style={{ color: '#5f6f6b', fontSize: 14, marginTop: -4 }}>
+                  {studentProfile.email}
+                </div>
+
+                <div style={{ marginTop: 22, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                  <h4 style={{ margin: 0 }}>Misk Core — Activity Log</h4>
+                  <span style={{ fontSize: 13, color: '#6d7f7a' }}>
+                    {studentProfile.activities?.length || 0} entries
+                  </span>
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  {(!studentProfile.activities || studentProfile.activities.length === 0) ? (
+                    <div style={{ padding: 14, borderRadius: 12, background: 'rgba(0,0,0,0.03)' }}>
+                      This student hasn't logged any Misk Core activities yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {studentProfile.activities.map((item) => (
+                        <div
+                          key={item.id}
+                          style={{
+                            borderRadius: 14,
+                            padding: 14,
+                            background: 'rgba(255,255,255,0.85)',
+                            border: '1px solid rgba(0,0,0,0.06)',
+                            boxShadow: '0 10px 28px rgba(0,0,0,0.06)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <span
+                              style={{
+                                fontSize: 12,
+                                padding: '6px 10px',
+                                borderRadius: 999,
+                                background: 'rgba(2, 102, 75, 0.10)',
+                                color: '#02664b',
+                                fontWeight: 700,
+                                letterSpacing: '0.02em',
+                              }}
+                            >
+                              {item.category_name}
+                            </span>
+                            {item.activity_date && (
+                              <span style={{ fontSize: 12, color: '#6d7f7a' }}>
+                                {new Date(item.activity_date).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: '#0b3f33' }}>
+                            {item.title}
+                          </div>
+
+                          {item.description && (
+                            <div style={{ marginTop: 6, color: '#3f534f', lineHeight: 1.45 }}>
+                              {item.description}
+                            </div>
+                          )}
+
+                          {Array.isArray(item.tags) && item.tags.length > 0 && (
+                            <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {item.tags.map((t) => (
+                                <span
+                                  key={t}
+                                  style={{
+                                    fontSize: 11,
+                                    padding: '4px 8px',
+                                    borderRadius: 999,
+                                    background: 'rgba(0,0,0,0.05)',
+                                    color: '#3f534f',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {item.stored_filename && (
+                            <div style={{ marginTop: 10, fontSize: 13, color: '#4e615d' }}>
+                              <AttachmentLink
+                                storedFilename={item.stored_filename}
+                                originalFilename={item.original_filename}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

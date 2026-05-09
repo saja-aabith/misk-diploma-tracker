@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import './QuadrantCircle.css';
 import { BookOpenCheck, BriefcaseBusiness, Landmark, Mountain } from 'lucide-react';
 
-function QuadrantCircle3D({ size = 620 }) {
+function QuadrantCircle3D({ size = 620, onMiskCoreClick }) {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [hoveredQuadrant, setHoveredQuadrant] = useState(null);
 
@@ -79,6 +79,21 @@ function QuadrantCircle3D({ size = 620 }) {
   const handleMouseLeave = () => {
     setTilt({ x: 0, y: 0 });
     setHoveredQuadrant(null);
+  };
+
+  // Misk Core center is clickable only when the parent passes a handler.
+  // When clickable, the surface circle behaves like a button (focusable,
+  // Enter/Space activates) and the title text is also click-targeted so
+  // users can land on either; the title intentionally stays non-focusable
+  // to avoid duplicate tab stops for the same action.
+  const isCenterClickable = typeof onMiskCoreClick === 'function';
+
+  const handleCenterKeyDown = (e) => {
+    if (!isCenterClickable) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onMiskCoreClick();
+    }
   };
 
   const containerStyle = {
@@ -331,7 +346,10 @@ function QuadrantCircle3D({ size = 620 }) {
           <circle cx="250" cy="250" r="112" fill="none" stroke="rgba(0,214,160,0.35)" strokeWidth="3" strokeDasharray="9 12" className="misk-core-rings" pointerEvents="none" />
           <circle cx="250" cy="250" r="103" fill="none" stroke="rgba(0,214,160,0.16)" strokeWidth="10" pointerEvents="none" />
 
-          {/* Center */}
+          {/* Center — clickable when onMiskCoreClick is provided.
+              The surface circle behaves like a button (focusable,
+              Enter/Space activates); the title (below) shares the
+              click target without taking a separate tab stop. */}
           <circle
             cx="250"
             cy="250"
@@ -342,6 +360,11 @@ function QuadrantCircle3D({ size = 620 }) {
             style={{ cursor: 'pointer' }}
             onMouseEnter={() => setHoveredQuadrant(miskCore)}
             onMouseLeave={() => setHoveredQuadrant(null)}
+            onClick={isCenterClickable ? onMiskCoreClick : undefined}
+            onKeyDown={isCenterClickable ? handleCenterKeyDown : undefined}
+            role={isCenterClickable ? 'button' : undefined}
+            tabIndex={isCenterClickable ? 0 : undefined}
+            aria-label={isCenterClickable ? 'Open Misk Core activity log' : undefined}
           />
           <circle cx="235" cy="235" r="55" fill="rgba(255,255,255,0.35)" pointerEvents="none" />
 
@@ -358,6 +381,7 @@ function QuadrantCircle3D({ size = 620 }) {
             style={{ cursor: 'pointer' }}
             onMouseEnter={() => setHoveredQuadrant(miskCore)}
             onMouseLeave={() => setHoveredQuadrant(null)}
+            onClick={isCenterClickable ? onMiskCoreClick : undefined}
           >
             <tspan x="250" dy={-(coreSubSize * 0.35)} fontSize={coreTitleSize}>
               Misk Core
