@@ -48,6 +48,81 @@ MISK_CORE_OBJECTIVES = [
     ),
 ]
 
+# ---------------------------------------------------------------------
+# Chunk 24: hero student profiles for the live demo.
+#
+# Each key is the seed-order index of a student (0 = Ahmed Al-Dosari,
+# 1 = Fatima Al-Mansouri, etc., per `student_seed` in seed_data). Each
+# value maps a quadrant NAME (matching `quadrants.name`, including
+# "Misk Core") to a list of completion percentages — one per objective
+# in display order within that quadrant.
+#
+# Students with no entry here, and any (student, quadrant) pair that
+# isn't covered, fall back to the historical random distribution. The
+# first 5 students get curated shapes so the demo dashboard tells five
+# visually distinct stories side by side; the remaining 15 students
+# keep the "real school" random feel.
+#
+# Note: each list's length must match the real objective count for that
+# quadrant. As of Chunk 24:
+#   Academic 4 | Internship 2 | National Identity 2 | Leadership 2 | Misk Core 4.
+# If an objective is added later, extend the corresponding list in
+# every profile (or accept that the extra objective falls back to
+# random for that profile).
+# ---------------------------------------------------------------------
+HERO_PROGRESS_PROFILES = {
+    # Profile 0 — Near-empty (Year 7 lookalike).
+    # Quadrant circle barely filled. Demonstrates the "starting from
+    # scratch" view a brand-new student sees on day one.
+    0: {
+        "Academic":          [0, 15, 0, 0],
+        "Internship":        [0, 0],
+        "National Identity": [0, 20],
+        "Leadership":        [0, 0],
+        "Misk Core":         [10, 0, 0, 0],
+    },
+    # Profile 1 — Mid-progress, balanced (Year 9–10 lookalike).
+    # Symmetric ~50% across all quadrants, with one objective per
+    # quadrant at 100% so pillar cards read "1 of N completed".
+    1: {
+        "Academic":          [100, 60, 40, 45],
+        "Internship":        [100, 50],
+        "National Identity": [65, 100],
+        "Leadership":        [100, 50],
+        "Misk Core":         [60, 100, 40, 55],
+    },
+    # Profile 2 — Mid-progress, lopsided.
+    # Strong in Academic and National Identity, lagging in Internship
+    # and Leadership. Asymmetric circle — useful demo talking point.
+    2: {
+        "Academic":          [85, 100, 75, 100],
+        "Internship":        [25, 20],
+        "National Identity": [100, 90],
+        "Leadership":        [30, 15],
+        "Misk Core":         [80, 100, 65, 90],
+    },
+    # Profile 3 — Nearly complete (Year 12 lookalike).
+    # Mostly very high, with Leadership as the deliberately lagging
+    # quadrant so the demo can talk about "what's left to finish".
+    3: {
+        "Academic":          [100, 100, 95, 100],
+        "Internship":        [100, 85],
+        "National Identity": [100, 100],
+        "Leadership":        [65, 60],
+        "Misk Core":         [100, 95, 100, 100],
+    },
+    # Profile 4 — Gold standard.
+    # 100% across every objective. Demonstrates the "fully complete"
+    # visual state of the quadrant circle.
+    4: {
+        "Academic":          [100, 100, 100, 100],
+        "Internship":        [100, 100],
+        "National Identity": [100, 100],
+        "Leadership":        [100, 100],
+        "Misk Core":         [100, 100, 100, 100],
+    },
+}
+
 
 def get_db():
     """Get database connection"""
@@ -253,6 +328,56 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
+# ---------------------------------------------------------------------
+# Chunk 24 helpers: hero profile resolution.
+# Shared by seed_data (quadrants 1–4) and seed_misk_core_quadrant
+# (Misk Core), so both seed paths produce consistent hero shapes.
+# ---------------------------------------------------------------------
+def _compute_progress_status(completion: int) -> str:
+    """Map a completion percentage to a seeded status string using the
+    same bucketing seed_data has always used.
+
+    KNOWN: the 'in_progress' value is NOT in the documented status enum
+    (not_started | submitted | pending_review | approved | rejected).
+    It is preserved here verbatim to match existing seeded data
+    semantics — reconciling it is tracked as a separate chunk per the
+    handover, not Chunk 24.
+    """
+    if completion == 0:
+        return "not_started"
+    if completion < 50:
+        return "in_progress"
+    if completion < 100:
+        return "pending_review"
+    return "approved"
+
+
+def _resolve_progress(student_seed_index: int, quadrant_name: str,
+                      obj_index_in_quadrant: int):
+    """Return (completion_percentage, status) for one seeded
+    student_objective_progress row.
+
+    If student_seed_index has a hero profile AND the profile covers
+    (quadrant_name, obj_index_in_quadrant), the curated value is used.
+    Otherwise the historical random distribution is consulted.
+
+    The random fallback advances Python's global RNG, so the caller
+    must seed it with MISK_TRACKER_SEED before the seeding loop for
+    determinism (both seed_data and seed_misk_core_quadrant already
+    do this).
+    """
+    profile = HERO_PROGRESS_PROFILES.get(student_seed_index)
+    if profile is not None:
+        quadrant_completions = profile.get(quadrant_name)
+        if (quadrant_completions is not None
+                and obj_index_in_quadrant < len(quadrant_completions)):
+            completion = quadrant_completions[obj_index_in_quadrant]
+            return completion, _compute_progress_status(completion)
+
+    completion = random.choice([0, 15, 25, 40, 55, 65, 75, 85, 95, 100])
+    return completion, _compute_progress_status(completion)
+
+
 def seed_activity_categories(conn):
     """Seed the Misk Core activity taxonomy.
 
@@ -309,6 +434,10 @@ def seed_misk_core_quadrant(conn):
     - It must be safe to re-run on every startup.
     The two requirements together push it out of seed_data into its own
     idempotent seed function called unconditionally from init_database.
+
+    Chunk 24: hero student profiles (HERO_PROGRESS_PROFILES) now apply
+    to the Misk Core quadrant as well as the original four, so the demo
+    narrative remains coherent across all five slices of the circle.
     """
     cursor = conn.cursor()
 
@@ -321,9 +450,10 @@ def seed_misk_core_quadrant(conn):
     if existing is not None:
         return
 
-    # Reset RNG so that the random progress data we generate below is
-    # deterministic across re-applications (matches the pattern used in
-    # seed_data). Note this affects only this function's random calls.
+    # Reset RNG so that the random-fallback progress data we generate
+    # below is deterministic across re-applications (matches the pattern
+    # used in seed_data). Note this affects only this function's random
+    # calls; hero students consume no RNG here.
     random.seed(MISK_TRACKER_SEED)
 
     # 1. Insert the Misk Core quadrant row, capture the assigned id.
@@ -338,6 +468,8 @@ def seed_misk_core_quadrant(conn):
     misk_core_id = cursor.lastrowid
 
     # 2. Insert the four objectives under the Misk Core quadrant.
+    # Insertion order matches MISK_CORE_OBJECTIVES, which is also the
+    # display order assumed by HERO_PROGRESS_PROFILES[*]["Misk Core"].
     new_objective_ids = []
     for title, description in MISK_CORE_OBJECTIVES:
         cursor.execute(
@@ -348,26 +480,22 @@ def seed_misk_core_quadrant(conn):
         new_objective_ids.append(cursor.lastrowid)
 
     # 3. Initialise student_objective_progress for every existing student
-    #    against each of the four new objectives. Same status-by-completion
-    #    rules as the original seed_data for visual consistency in the demo.
-    cursor.execute("SELECT id FROM users WHERE role = 'student'")
+    #    against each of the four new objectives. Hero students (seed
+    #    indices 0..len(HERO_PROGRESS_PROFILES)-1) get the curated shape
+    #    for Misk Core; everyone else falls back to random.
+    #    ORDER BY id ensures the enumerate() index lines up with the
+    #    student_seed insertion order from seed_data (teachers occupy
+    #    ids 1–2, students 3+).
+    cursor.execute("SELECT id FROM users WHERE role = 'student' ORDER BY id")
     student_ids = [row[0] for row in cursor.fetchall()]
 
-    for student_id in student_ids:
-        for obj_id in new_objective_ids:
-            completion = random.choice([0, 15, 25, 40, 55, 65, 75, 85, 95, 100])
-            if completion == 0:
-                status = "not_started"
-            elif completion < 50:
-                # KNOWN: 'in_progress' is not in the documented status enum.
-                # Preserved here to match the existing seed_data semantics
-                # rather than introduce a divergence in seed shape.
-                status = "in_progress"
-            elif completion < 100:
-                status = "pending_review"
-            else:
-                status = "approved"
-
+    for student_seed_index, student_id in enumerate(student_ids):
+        for obj_idx_in_quadrant, obj_id in enumerate(new_objective_ids):
+            completion, status = _resolve_progress(
+                student_seed_index,
+                MISK_CORE_QUADRANT["name"],
+                obj_idx_in_quadrant,
+            )
             cursor.execute(
                 """
                 INSERT INTO student_objective_progress
@@ -389,11 +517,18 @@ def seed_misk_core_quadrant(conn):
 def seed_data(conn):
     """Seed database with realistic test data.
 
-    All random draws below (student ID suffixes, progress percentages,
-    submission counts, review choices) are made deterministic by seeding
-    Python's RNG with MISK_TRACKER_SEED. Two fresh `diploma_tracker.db`
-    rebuilds on different machines produce identical seed data, so demo
-    rehearsal credentials and student profiles remain stable.
+    All random draws below (student ID suffixes, progress percentages
+    for non-hero students, submission counts, review choices) are made
+    deterministic by seeding Python's RNG with MISK_TRACKER_SEED. Two
+    fresh `diploma_tracker.db` rebuilds on different machines produce
+    identical seed data, so demo rehearsal credentials and student
+    profiles remain stable.
+
+    Chunk 24: the first 5 students (Ahmed, Fatima, Mohammed, Sara,
+    Abdullah) receive curated "hero" progress shapes via
+    HERO_PROGRESS_PROFILES so the demo dashboard tells a coherent
+    visual story. Students 5..19 keep the original random shape so
+    the wider class still looks like a real school.
     """
     cursor = conn.cursor()
 
@@ -416,6 +551,8 @@ def seed_data(conn):
         )
 
     # Seed objectives (KPIs) per quadrant for the original four.
+    # Insertion order matches the display order assumed by the
+    # corresponding lists in HERO_PROGRESS_PROFILES.
     objectives = [
         # Academic (quadrant_id = 1)
         (1, "IGCSE Performance",
@@ -468,12 +605,16 @@ def seed_data(conn):
             (identifier, identifier, password_hash, "teacher", full_name)
         )
 
+    # Student insertion order = the seed_index used by
+    # HERO_PROGRESS_PROFILES. Do NOT reorder this list without also
+    # remapping the hero profiles, or the demo narrative will silently
+    # attach to the wrong student names.
     student_seed = [
-        ("ahmed",    "Ahmed Al-Dosari"),
-        ("fatima",   "Fatima Al-Mansouri"),
-        ("mohammed", "Mohammed Al-Harbi"),
-        ("sara",     "Sara Al-Ghamdi"),
-        ("abdullah", "Abdullah Al-Otaibi"),
+        ("ahmed",    "Ahmed Al-Dosari"),       # seed_index 0 — hero: Near-empty
+        ("fatima",   "Fatima Al-Mansouri"),    # seed_index 1 — hero: Mid-balanced
+        ("mohammed", "Mohammed Al-Harbi"),     # seed_index 2 — hero: Mid-lopsided
+        ("sara",     "Sara Al-Ghamdi"),        # seed_index 3 — hero: Nearly complete
+        ("abdullah", "Abdullah Al-Otaibi"),    # seed_index 4 — hero: Gold standard
         ("noura",    "Noura Al-Qahtani"),
         ("khalid",   "Khalid Al-Mutairi"),
         ("lama",     "Lama Al-Shehri"),
@@ -507,30 +648,42 @@ def seed_data(conn):
 
     conn.commit()
 
-    cursor.execute("SELECT id FROM users WHERE role='student'")
+    # ORDER BY id so the enumerate() index matches the student_seed
+    # insertion order — required for HERO_PROGRESS_PROFILES lookup.
+    cursor.execute("SELECT id FROM users WHERE role='student' ORDER BY id")
     student_ids = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT id FROM objectives")
-    objective_ids = [row[0] for row in cursor.fetchall()]
+    # Metadata lookup: objective_id -> (quadrant_name, index_in_quadrant).
+    # Built fresh from the rows we just inserted; sees only the four
+    # quadrants seed_data owns (Misk Core is added later by
+    # seed_misk_core_quadrant, which builds its own equivalent inline).
+    cursor.execute("""
+        SELECT o.id, q.name
+        FROM objectives o
+        JOIN quadrants q ON q.id = o.quadrant_id
+        ORDER BY q.display_order, o.id
+    """)
+    objective_rows = cursor.fetchall()
 
-    # Seed realistic progress data for each student.
-    # KNOWN ISSUE: 'in_progress' is NOT in the documented status enum
-    # (not_started | submitted | pending_review | approved | rejected).
-    # Preserved as-is in this chunk; flagged for separate reconciliation.
-    for student_id in student_ids:
+    objective_meta = {}            # obj_id -> (quadrant_name, idx_in_quadrant)
+    quadrant_obj_counters = {}     # quadrant_name -> next idx
+    objective_ids = []
+    for obj_id, qname in objective_rows:
+        idx = quadrant_obj_counters.get(qname, 0)
+        objective_meta[obj_id] = (qname, idx)
+        quadrant_obj_counters[qname] = idx + 1
+        objective_ids.append(obj_id)
+
+    # Seed progress. Hero students get curated shapes via
+    # _resolve_progress; everyone else falls back to the historical
+    # random distribution. The 'in_progress' status quirk is preserved
+    # inside _compute_progress_status (see its docstring).
+    for student_seed_index, student_id in enumerate(student_ids):
         for obj_id in objective_ids:
-            completion = random.choice([0, 15, 25, 40, 55, 65, 75, 85, 95, 100])
-            status = "not_started"
-
-            if completion == 0:
-                status = "not_started"
-            elif completion < 50:
-                status = "in_progress"
-            elif completion < 100:
-                status = "pending_review"
-            else:
-                status = "approved"
-
+            quadrant_name, obj_idx_in_quadrant = objective_meta[obj_id]
+            completion, status = _resolve_progress(
+                student_seed_index, quadrant_name, obj_idx_in_quadrant
+            )
             cursor.execute(
                 """INSERT INTO student_objective_progress
                    (student_id, objective_id, current_points, completion_percentage, status)
@@ -538,7 +691,11 @@ def seed_data(conn):
                 (student_id, obj_id, completion, completion, status)
             )
 
-    # Seed evidence submissions (realistic distribution)
+    # Seed evidence submissions and reviews — UNCHANGED from previous
+    # chunks. The random shape is intentional: it keeps the teacher
+    # submissions queue populated with realistic-looking activity from
+    # across the student body. Hero student progress is decoupled from
+    # this and is the visual primary signal on the student dashboard.
     file_types = ["report.pdf", "presentation.pptx", "video.mp4", "essay.docx", "project.pdf"]
     statuses = ["submitted", "under_review", "approved", "rejected"]
 
