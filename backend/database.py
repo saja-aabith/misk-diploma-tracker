@@ -5,6 +5,13 @@ import bcrypt
 
 DB_NAME = "diploma_tracker.db"
 
+# Fixed seed so that the random-looking 4-digit student ID suffixes (and
+# any other random choices made during seeding) are stable across DB
+# rebuilds. Demo rehearsal credentials stay valid; two developers
+# rebuilding locally get identical seeded users.
+MISK_TRACKER_SEED = 2026
+
+
 def get_db():
     """Get database connection"""
     conn = sqlite3.connect(DB_NAME)
@@ -258,8 +265,20 @@ def seed_activity_categories(conn):
 
 
 def seed_data(conn):
-    """Seed database with realistic test data"""
+    """Seed database with realistic test data.
+
+    All random draws below (student ID suffixes, progress percentages,
+    submission counts, review choices) are made deterministic by seeding
+    Python's RNG with MISK_TRACKER_SEED. Two fresh `diploma_tracker.db`
+    rebuilds on different machines produce identical seed data, so demo
+    rehearsal credentials and student profiles remain stable.
+    """
     cursor = conn.cursor()
+
+    # Lock the RNG to a known starting point. This affects every random
+    # call inside this function — student suffixes, progress %, submission
+    # counts, file picks, ratings — making the entire seed reproducible.
+    random.seed(MISK_TRACKER_SEED)
 
     # Seed quadrants
     quadrants = [
@@ -315,47 +334,77 @@ def seed_data(conn):
             (quad_id, title, desc, 100)
         )
 
-    # Seed teachers
+    # ---------------------------------------------------------------
+    # Users — school-email-format usernames (Chunk 20)
+    # ---------------------------------------------------------------
+    # Identifier formats (per school convention):
+    #   - Teachers: {first-initial}{surname-hyphens-stripped}@miskschools.edu.sa
+    #     e.g. Murray Thomas      -> mthomas@miskschools.edu.sa
+    #     e.g. Ahmed Al-Rashid    -> aalrashid@miskschools.edu.sa  (hyphen stripped)
+    #   - Students: {firstname-lowercased}{4-digit-random-suffix}@miskschools.edu.sa
+    #     e.g. Ahmed Al-Dosari + 4729 -> ahmed4729@miskschools.edu.sa
+    #
+    # IMPORTANT: these identifiers are credentials only. They are NOT
+    # connected to any real email system — no SMTP, no SSO, no OAuth.
+    # The `email` column is stored equal to the `username` for uniformity;
+    # both are opaque login strings that happen to be email-shaped.
     password_hash = hash_password("password123")
-    teachers = [
-        ("teacher1", "teacher1@miskschools.edu.sa", "Mr. Murray Thomas", "teacher"),
-        ("teacher2", "teacher2@miskschools.edu.sa", "Mr. Ahmed Al-Rashid", "teacher")
-    ]
 
-    for username, email, full_name, role in teachers:
+    # Teachers: explicit list, no derivation (only 2 of them, easier to read).
+    teachers = [
+        ("mthomas@miskschools.edu.sa",   "Mr. Murray Thomas"),
+        ("aalrashid@miskschools.edu.sa", "Mr. Ahmed Al-Rashid"),
+    ]
+    for identifier, full_name in teachers:
         cursor.execute(
-            "INSERT INTO users (username, email, password_hash, role, full_name) VALUES (?, ?, ?, ?, ?)",
-            (username, email, password_hash, role, full_name)
+            "INSERT INTO users (username, email, password_hash, role, full_name) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (identifier, identifier, password_hash, "teacher", full_name)
         )
 
-    # Seed students with realistic Saudi/international names
-    students = [
-        ("student1", "ahmed.aldosari@student.misk.sa", "Ahmed Al-Dosari"),
-        ("student2", "fatima.almansouri@student.misk.sa", "Fatima Al-Mansouri"),
-        ("student3", "mohammed.alharbi@student.misk.sa", "Mohammed Al-Harbi"),
-        ("student4", "sara.alghamdi@student.misk.sa", "Sara Al-Ghamdi"),
-        ("student5", "abdullah.alotaibi@student.misk.sa", "Abdullah Al-Otaibi"),
-        ("student6", "noura.alqahtani@student.misk.sa", "Noura Al-Qahtani"),
-        ("student7", "khalid.almutairi@student.misk.sa", "Khalid Al-Mutairi"),
-        ("student8", "lama.alshehri@student.misk.sa", "Lama Al-Shehri"),
-        ("student9", "omar.alzahrani@student.misk.sa", "Omar Al-Zahrani"),
-        ("student10", "huda.alenezi@student.misk.sa", "Huda Al-Enezi"),
-        ("student11", "faisal.aldawsari@student.misk.sa", "Faisal Al-Dawsari"),
-        ("student12", "maha.albalawi@student.misk.sa", "Maha Al-Balawi"),
-        ("student13", "turki.alsubaie@student.misk.sa", "Turki Al-Subaie"),
-        ("student14", "reem.alshammari@student.misk.sa", "Reem Al-Shammari"),
-        ("student15", "saud.alajmi@student.misk.sa", "Saud Al-Ajmi"),
-        ("student16", "layla.alsalem@student.misk.sa", "Layla Al-Salem"),
-        ("student17", "bandar.almalki@student.misk.sa", "Bandar Al-Malki"),
-        ("student18", "aisha.alhabib@student.misk.sa", "Aisha Al-Habib"),
-        ("student19", "nawaf.alrashid@student.misk.sa", "Nawaf Al-Rashid"),
-        ("student20", "shahad.alkhalifa@student.misk.sa", "Shahad Al-Khalifa")
+    # Students: (firstname_lower, full_name). The 4-digit suffix is drawn
+    # from the seeded RNG so it's stable across rebuilds. Building the
+    # identifier in code (rather than hardcoding) keeps the list legible
+    # — the suffix is generated noise, the surrounding fields are real.
+    student_seed = [
+        ("ahmed",    "Ahmed Al-Dosari"),
+        ("fatima",   "Fatima Al-Mansouri"),
+        ("mohammed", "Mohammed Al-Harbi"),
+        ("sara",     "Sara Al-Ghamdi"),
+        ("abdullah", "Abdullah Al-Otaibi"),
+        ("noura",    "Noura Al-Qahtani"),
+        ("khalid",   "Khalid Al-Mutairi"),
+        ("lama",     "Lama Al-Shehri"),
+        ("omar",     "Omar Al-Zahrani"),
+        ("huda",     "Huda Al-Enezi"),
+        ("faisal",   "Faisal Al-Dawsari"),
+        ("maha",     "Maha Al-Balawi"),
+        ("turki",    "Turki Al-Subaie"),
+        ("reem",     "Reem Al-Shammari"),
+        ("saud",     "Saud Al-Ajmi"),
+        ("layla",    "Layla Al-Salem"),
+        ("bandar",   "Bandar Al-Malki"),
+        ("aisha",    "Aisha Al-Habib"),
+        ("nawaf",    "Nawaf Al-Rashid"),
+        ("shahad",   "Shahad Al-Khalifa"),
     ]
 
-    for username, email, full_name in students:
+    # We need usernames to be unique. With 20 students and a 9000-value
+    # range, collisions are extremely unlikely, but we guard anyway so a
+    # future expansion of student_seed doesn't quietly produce a duplicate
+    # username and crash the INSERT.
+    used_suffixes = set()
+    for first_lower, full_name in student_seed:
+        while True:
+            suffix = random.randint(1000, 9999)
+            if suffix not in used_suffixes:
+                used_suffixes.add(suffix)
+                break
+        identifier = f"{first_lower}{suffix}@miskschools.edu.sa"
         cursor.execute(
-            "INSERT INTO users (username, email, password_hash, role, full_name) VALUES (?, ?, ?, ?, ?)",
-            (username, email, password_hash, "student", full_name)
+            "INSERT INTO users (username, email, password_hash, role, full_name) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (identifier, identifier, password_hash, "student", full_name)
         )
 
     conn.commit()
