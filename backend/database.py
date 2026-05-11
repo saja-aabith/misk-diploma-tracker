@@ -11,6 +11,43 @@ DB_NAME = "diploma_tracker.db"
 # rebuilding locally get identical seeded users.
 MISK_TRACKER_SEED = 2026
 
+# Misk Core quadrant content (Chunk 21).
+# The table named `quadrants` now contains 5 rows: the original four plus
+# Misk Core. The name is a slight historical misnomer — Misk Core is the
+# "fifth criterion" that connects the other four, not a corner — but we
+# accept that to keep the schema additive and the code simple. The center
+# is the visual treatment for Misk Core, not a corner badge.
+MISK_CORE_QUADRANT = {
+    "name": "Misk Core",
+    "color_hex": "#02664b",  # MISK school green
+    "display_order": 5,
+}
+
+MISK_CORE_OBJECTIVES = [
+    (
+        "Co-Curricular Activities Programme (CCAP)",
+        "Sustained participation in school CCAP strands such as sports teams, "
+        "performing arts, MUN, debate, or service clubs, evidenced through "
+        "teacher confirmation, photos, or reflections.",
+    ),
+    (
+        "Trips & Visits",
+        "Engagement with school trips, cultural visits, residentials, or "
+        "external programmes that broaden experience beyond the classroom.",
+    ),
+    (
+        "Competitions & Awards",
+        "Participation in inter-school, regional, national, or international "
+        "competitions, with achievements, certificates, or reflections "
+        "documented.",
+    ),
+    (
+        "Project 10",
+        "Completion and presentation of a Project 10 challenge demonstrating "
+        "initiative, planning, and execution across a sustained piece of work.",
+    ),
+]
+
 
 def get_db():
     """Get database connection"""
@@ -25,7 +62,7 @@ def init_database():
     - CREATE TABLE IF NOT EXISTS for new tables
     - ALTER TABLE ADD COLUMN guarded by sqlite3.OperationalError
     - CREATE UNIQUE INDEX IF NOT EXISTS, guarded by a duplicate pre-check
-    - Seed inserts gated on COUNT(*) == 0
+    - Seed inserts gated on COUNT(*) == 0 (or table-specific presence checks)
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -113,8 +150,13 @@ def init_database():
     # ---------------------------------------------------------------
     # New Misk Core tables (Type 2: free-form activity log, no review)
     # ---------------------------------------------------------------
-    # activity_categories: lookup table for the Misk Core taxonomy. Supports
-    # an optional self-referential parent for future sub-categorisation.
+    # NOTE (Chunk 21): These tables predate the decision to convert Misk
+    # Core to a structured review-driven flow (Option C). They remain in
+    # the schema for now to keep this chunk additive — the free-form
+    # activity log code path stays functional during the transition.
+    # Chunk 22 retires the frontend that consumes them; a later cleanup
+    # chunk can drop the tables and routes once we're sure nothing else
+    # references them.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS activity_categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,10 +170,6 @@ def init_database():
         )
     """)
 
-    # student_activities: free-form log entries. Not tied to objectives, never
-    # goes through teacher review. `tags` is TEXT storing a JSON-encoded array
-    # (SQLite has no array type); the route layer encodes/decodes at the edge.
-    # `activity_date` is nullable at the DB layer; the route enforces presence.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS student_activities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,8 +193,6 @@ def init_database():
     # ---------------------------------------------------------------
     # Idempotent ALTER TABLE migrations on evidence_submissions
     # ---------------------------------------------------------------
-    # Adds the metadata columns that the new authenticated upload pipeline
-    # will populate. All nullable so existing rows remain valid.
     for ddl in (
         "ALTER TABLE evidence_submissions ADD COLUMN stored_filename TEXT",
         "ALTER TABLE evidence_submissions ADD COLUMN original_filename TEXT",
@@ -167,17 +203,11 @@ def init_database():
         try:
             cursor.execute(ddl)
         except sqlite3.OperationalError:
-            # Column already exists — safe to skip.
             pass
 
     # ---------------------------------------------------------------
     # UNIQUE INDEX on evidence_reviews(submission_id, teacher_id)
     # ---------------------------------------------------------------
-    # Prevents the same teacher from reviewing the same submission twice,
-    # which is required for the consensus rule (>=2 distinct reviewers,
-    # avg rating >= 2.5). We detect existing duplicates first; if any are
-    # found we skip index creation and surface a warning rather than
-    # silently mutating review history.
     cursor.execute("""
         SELECT submission_id, teacher_id, COUNT(*) AS cnt
         FROM evidence_reviews
@@ -207,12 +237,14 @@ def init_database():
     if cursor.fetchone()[0] == 0:
         seed_data(conn)
 
-    # Activity categories are seeded on a separate gate so that existing
-    # installations (which already have users but no categories) still get
-    # populated on next startup. Once present, the gate prevents re-seeding.
     cursor.execute("SELECT COUNT(*) FROM activity_categories")
     if cursor.fetchone()[0] == 0:
         seed_activity_categories(conn)
+
+    # Chunk 21: ensure Misk Core exists as the fifth quadrant. Internally
+    # gated on `name='Misk Core'` so existing DBs pick it up on next
+    # startup without requiring a full reseed.
+    seed_misk_core_quadrant(conn)
 
     conn.close()
 
@@ -224,10 +256,13 @@ def hash_password(password: str) -> str:
 def seed_activity_categories(conn):
     """Seed the Misk Core activity taxonomy.
 
+    NOTE (Chunk 21): the activity-category taxonomy is now legacy. It
+    backs the free-form activity log that pre-dated the Option C decision
+    to convert Misk Core to a structured submission flow. Categories stay
+    seeded so the legacy /student/activities routes don't 500 during
+    the transition; Chunk 22 stops using them.
+
     Idempotent — only invoked when activity_categories is empty.
-    NOTE: names below are PROPOSED content for MISK Schools and should be
-    confirmed by school administration before student-facing rollout. They
-    can be edited via UPDATE without any schema change.
     """
     cursor = conn.cursor()
     categories = [
@@ -264,6 +299,93 @@ def seed_activity_categories(conn):
     print("✓ Activity categories seeded")
 
 
+def seed_misk_core_quadrant(conn):
+    """Ensure Misk Core exists as a quadrants row with its four objectives,
+    and seed initial student_objective_progress rows for every existing
+    student. Idempotent — gated on the absence of a row with name='Misk Core'.
+
+    Why this lives in its own function and not in seed_data:
+    - It must apply to existing DBs (the seed_data gate is COUNT(users)==0).
+    - It must be safe to re-run on every startup.
+    The two requirements together push it out of seed_data into its own
+    idempotent seed function called unconditionally from init_database.
+    """
+    cursor = conn.cursor()
+
+    # Idempotency gate: if Misk Core already exists, do nothing.
+    cursor.execute(
+        "SELECT id FROM quadrants WHERE name = ?",
+        (MISK_CORE_QUADRANT["name"],),
+    )
+    existing = cursor.fetchone()
+    if existing is not None:
+        return
+
+    # Reset RNG so that the random progress data we generate below is
+    # deterministic across re-applications (matches the pattern used in
+    # seed_data). Note this affects only this function's random calls.
+    random.seed(MISK_TRACKER_SEED)
+
+    # 1. Insert the Misk Core quadrant row, capture the assigned id.
+    cursor.execute(
+        "INSERT INTO quadrants (name, color_hex, display_order) VALUES (?, ?, ?)",
+        (
+            MISK_CORE_QUADRANT["name"],
+            MISK_CORE_QUADRANT["color_hex"],
+            MISK_CORE_QUADRANT["display_order"],
+        ),
+    )
+    misk_core_id = cursor.lastrowid
+
+    # 2. Insert the four objectives under the Misk Core quadrant.
+    new_objective_ids = []
+    for title, description in MISK_CORE_OBJECTIVES:
+        cursor.execute(
+            "INSERT INTO objectives (quadrant_id, title, description, max_points) "
+            "VALUES (?, ?, ?, ?)",
+            (misk_core_id, title, description, 100),
+        )
+        new_objective_ids.append(cursor.lastrowid)
+
+    # 3. Initialise student_objective_progress for every existing student
+    #    against each of the four new objectives. Same status-by-completion
+    #    rules as the original seed_data for visual consistency in the demo.
+    cursor.execute("SELECT id FROM users WHERE role = 'student'")
+    student_ids = [row[0] for row in cursor.fetchall()]
+
+    for student_id in student_ids:
+        for obj_id in new_objective_ids:
+            completion = random.choice([0, 15, 25, 40, 55, 65, 75, 85, 95, 100])
+            if completion == 0:
+                status = "not_started"
+            elif completion < 50:
+                # KNOWN: 'in_progress' is not in the documented status enum.
+                # Preserved here to match the existing seed_data semantics
+                # rather than introduce a divergence in seed shape.
+                status = "in_progress"
+            elif completion < 100:
+                status = "pending_review"
+            else:
+                status = "approved"
+
+            cursor.execute(
+                """
+                INSERT INTO student_objective_progress
+                    (student_id, objective_id, current_points,
+                     completion_percentage, status)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (student_id, obj_id, completion, completion, status),
+            )
+
+    conn.commit()
+    print(
+        f"✓ Misk Core quadrant seeded (id={misk_core_id}, "
+        f"{len(new_objective_ids)} objectives, "
+        f"{len(student_ids)} students initialised)"
+    )
+
+
 def seed_data(conn):
     """Seed database with realistic test data.
 
@@ -275,12 +397,11 @@ def seed_data(conn):
     """
     cursor = conn.cursor()
 
-    # Lock the RNG to a known starting point. This affects every random
-    # call inside this function — student suffixes, progress %, submission
-    # counts, file picks, ratings — making the entire seed reproducible.
+    # Lock the RNG to a known starting point.
     random.seed(MISK_TRACKER_SEED)
 
-    # Seed quadrants
+    # Seed quadrants — the original four. Misk Core is added by
+    # seed_misk_core_quadrant() so it can also apply to existing DBs.
     quadrants = [
         ("Academic", "#E74C3C", 1),
         ("Internship", "#9B59B6", 2),
@@ -294,10 +415,7 @@ def seed_data(conn):
             (name, color, order)
         )
 
-    # Seed objectives (KPIs) per quadrant
-    # Indentation fixed in this chunk (the previous version was an
-    # IndentationError; the function only runs on empty DB so it had been
-    # masked in dev). Logic and content unchanged.
+    # Seed objectives (KPIs) per quadrant for the original four.
     objectives = [
         # Academic (quadrant_id = 1)
         (1, "IGCSE Performance",
@@ -337,20 +455,8 @@ def seed_data(conn):
     # ---------------------------------------------------------------
     # Users — school-email-format usernames (Chunk 20)
     # ---------------------------------------------------------------
-    # Identifier formats (per school convention):
-    #   - Teachers: {first-initial}{surname-hyphens-stripped}@miskschools.edu.sa
-    #     e.g. Murray Thomas      -> mthomas@miskschools.edu.sa
-    #     e.g. Ahmed Al-Rashid    -> aalrashid@miskschools.edu.sa  (hyphen stripped)
-    #   - Students: {firstname-lowercased}{4-digit-random-suffix}@miskschools.edu.sa
-    #     e.g. Ahmed Al-Dosari + 4729 -> ahmed4729@miskschools.edu.sa
-    #
-    # IMPORTANT: these identifiers are credentials only. They are NOT
-    # connected to any real email system — no SMTP, no SSO, no OAuth.
-    # The `email` column is stored equal to the `username` for uniformity;
-    # both are opaque login strings that happen to be email-shaped.
     password_hash = hash_password("password123")
 
-    # Teachers: explicit list, no derivation (only 2 of them, easier to read).
     teachers = [
         ("mthomas@miskschools.edu.sa",   "Mr. Murray Thomas"),
         ("aalrashid@miskschools.edu.sa", "Mr. Ahmed Al-Rashid"),
@@ -362,10 +468,6 @@ def seed_data(conn):
             (identifier, identifier, password_hash, "teacher", full_name)
         )
 
-    # Students: (firstname_lower, full_name). The 4-digit suffix is drawn
-    # from the seeded RNG so it's stable across rebuilds. Building the
-    # identifier in code (rather than hardcoding) keeps the list legible
-    # — the suffix is generated noise, the surrounding fields are real.
     student_seed = [
         ("ahmed",    "Ahmed Al-Dosari"),
         ("fatima",   "Fatima Al-Mansouri"),
@@ -389,10 +491,6 @@ def seed_data(conn):
         ("shahad",   "Shahad Al-Khalifa"),
     ]
 
-    # We need usernames to be unique. With 20 students and a 9000-value
-    # range, collisions are extremely unlikely, but we guard anyway so a
-    # future expansion of student_seed doesn't quietly produce a duplicate
-    # username and crash the INSERT.
     used_suffixes = set()
     for first_lower, full_name in student_seed:
         while True:
@@ -409,11 +507,9 @@ def seed_data(conn):
 
     conn.commit()
 
-    # Get student IDs
     cursor.execute("SELECT id FROM users WHERE role='student'")
     student_ids = [row[0] for row in cursor.fetchall()]
 
-    # Get objective IDs
     cursor.execute("SELECT id FROM objectives")
     objective_ids = [row[0] for row in cursor.fetchall()]
 
@@ -446,7 +542,6 @@ def seed_data(conn):
     file_types = ["report.pdf", "presentation.pptx", "video.mp4", "essay.docx", "project.pdf"]
     statuses = ["submitted", "under_review", "approved", "rejected"]
 
-    # Generate 60-80 submissions across all students
     num_submissions = random.randint(60, 80)
 
     for _ in range(num_submissions):
@@ -463,7 +558,6 @@ def seed_data(conn):
         ])
         status = random.choice(statuses)
 
-        # Submission date in last 30 days
         days_ago = random.randint(0, 30)
         submission_date = datetime.now() - timedelta(days=days_ago)
 
@@ -476,11 +570,8 @@ def seed_data(conn):
 
         submission_id = cursor.lastrowid
 
-        # Add reviews for some submissions (~40% have reviews).
-        # Each submission receives at most one review here, so the new UNIQUE
-        # INDEX on (submission_id, teacher_id) is satisfied by construction.
         if random.random() < 0.4:
-            teacher_id = random.choice([3, 4])  # teacher1 or teacher2
+            teacher_id = random.choice([3, 4])
             rating = random.randint(2, 5)
             decision = "approved" if rating >= 3 else "rejected"
             feedback = random.choice([

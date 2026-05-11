@@ -340,7 +340,13 @@ async def get_student_report(
         rejected=summary['rejected'] if summary['rejected'] else 0
     )
 
-    overall_completion = round(total_completion / 4, 1) if quadrant_reports else 0
+    # Overall completion is the mean across however many quadrants exist.
+    # Previously hardcoded to 4; updated in Chunk 21 when Misk Core was
+    # added as a fifth row in the `quadrants` table.
+    overall_completion = (
+        round(total_completion / len(quadrant_reports), 1)
+        if quadrant_reports else 0
+    )
 
     conn.close()
 

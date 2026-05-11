@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { student } from '../api/client';
 import { getUser, logout } from '../utils/auth';
 import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
-import ActivityLogModal from './ActivityLogModal';
 import AttachmentLink from './AttachmentLink';
 
 /**
@@ -74,10 +73,12 @@ function StudentDashboard() {
   const [activeTab, setActiveTab] = useState('progress');
   const [loading, setLoading] = useState(true);
 
-  // Misk Core (backend-backed)
-  const [activities, setActivities] = useState([]);
-  const [activitiesError, setActivitiesError] = useState('');
-  const [showActivityModal, setShowActivityModal] = useState(false);
+  // Ref to the objectives panel. Used to scroll the panel into view when a
+  // quadrant is selected — both from a PillarProgressCard click and from the
+  // Misk Core center click on the circle. The objectives panel only renders
+  // when selectedQuadrant && objectives.length > 0, so we set the ref on
+  // that block and rely on the brief render-then-scroll sequence below.
+  const objectivesPanelRef = useRef(null);
 
   // user kept for parity with original (unused locally)
   // eslint-disable-next-line no-unused-vars
@@ -87,7 +88,10 @@ function StudentDashboard() {
     loadDashboard();
     loadObjectives();
     loadSubmissions();
-    loadActivities();
+    // Misk Core activity log has been retired in favour of structured
+    // submissions under the Misk Core quadrant (Chunk 22). The backend
+    // /student/activities routes still exist but are no longer consumed
+    // here; they will be removed in a later cleanup chunk.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -120,21 +124,62 @@ function StudentDashboard() {
     }
   };
 
-  const loadActivities = async () => {
-    try {
-      const response = await student.getActivities();
-      setActivities(response?.data?.activities || []);
-      setActivitiesError('');
-    } catch (error) {
-      console.error('Failed to load activities:', error);
-      setActivitiesError('Could not load activities.');
-    }
-  };
+  // Scroll the objectives panel into view. Called after selecting a
+  // quadrant. Uses a small timeout so React has a chance to render the
+  // objectives panel before we measure / scroll. behavior:'smooth' for a
+  // calmer transition; block:'start' keeps the heading visible.
+  const scrollToObjectives = useCallback(() => {
+    setTimeout(() => {
+      if (objectivesPanelRef.current) {
+        objectivesPanelRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    }, 100);
+  }, []);
 
-  const handleQuadrantClick = (quadrant) => {
-    setSelectedQuadrant(quadrant);
-    loadObjectives(quadrant.id);
-  };
+  const handleQuadrantClick = useCallback(
+    (quadrant) => {
+      setSelectedQuadrant(quadrant);
+      loadObjectives(quadrant.id);
+      scrollToObjectives();
+    },
+    [scrollToObjectives]
+  );
+
+  // Center click on the quadrant circle. Resolves the Misk Core quadrant
+  // from dashboardData by name (the literal "Misk Core" set in the seed),
+  // then routes through handleQuadrantClick so the behaviour is identical
+  // to clicking a PillarProgressCard.
+  //
+  // Lookup is by name, not id, so the code stays correct if the AUTOINCREMENT
+  // id assignment ever changes. If lookup fails (e.g. on a malformed DB),
+  // we log and no-op rather than blowing up the dashboard.
+  const selectMiskCore = useCallback(() => {
+    const quadrants = dashboardData?.quadrants || [];
+    const miskCore = quadrants.find((q) => q.name === 'Misk Core');
+    if (!miskCore) {
+      console.warn(
+        'selectMiskCore: no quadrant named "Misk Core" in dashboard data; ' +
+          'check backend seed.'
+      );
+      return;
+    }
+    handleQuadrantClick(miskCore);
+  }, [dashboardData, handleQuadrantClick]);
+
+  // Build the completion map for QuadrantCircle3D from the dashboard data.
+  // Memoised so the prop reference is stable across renders that don't
+  // change the underlying quadrant data; this avoids re-firing the
+  // animation effect inside QuadrantCircle3D on unrelated re-renders.
+  const completionByName = useMemo(() => {
+    const list = dashboardData?.quadrants || [];
+    return list.reduce((acc, q) => {
+      acc[q.name] = q.completion_percentage;
+      return acc;
+    }, {});
+  }, [dashboardData]);
 
   const handleUploadClick = (objective) => {
     setSelectedObjective(objective);
@@ -146,14 +191,6 @@ function StudentDashboard() {
     loadDashboard();
     if (selectedQuadrant?.id) loadObjectives(selectedQuadrant.id);
     loadSubmissions();
-  };
-
-  const handleActivitySuccess = (newActivity) => {
-    setShowActivityModal(false);
-    if (newActivity && newActivity.id) {
-      setActivities((prev) => [newActivity, ...prev]);
-    }
-    loadActivities();
   };
 
   if (loading) return <div className="loading">Loading...</div>;
@@ -233,7 +270,8 @@ function StudentDashboard() {
               <div style={{ display: 'flex', justifyContent: 'center', margin: '26px 0 10px' }}>
                 <QuadrantCircle3D
                   size={400}
-                  onMiskCoreClick={() => setShowActivityModal(true)}
+                  onMiskCoreClick={selectMiskCore}
+                  completionByName={completionByName}
                 />
               </div>
 
@@ -248,116 +286,8 @@ function StudentDashboard() {
               </div>
             </div>
 
-            <div className="card">
-              <div className="card-header-inline">
-                <h3>Misk Core — Activity Log</h3>
-                <button
-                  className="btn-upload"
-                  style={{ maxWidth: 220 }}
-                  onClick={() => setShowActivityModal(true)}
-                >
-                  Add Experience
-                </button>
-              </div>
-
-              <div style={{ marginTop: 6, color: '#5f6f6b', fontSize: 14 }}>
-                Track CCAP, trips, competitions, Project 10, and other experiences linked to all four quadrants.
-              </div>
-
-              {activitiesError && (
-                <div className="error-message" style={{ marginTop: 12 }}>
-                  {activitiesError}
-                </div>
-              )}
-
-              <div style={{ marginTop: 18 }}>
-                {activities.length === 0 ? (
-                  <div style={{ padding: 14, borderRadius: 12, background: 'rgba(0,0,0,0.03)' }}>
-                    No Misk Core activities yet — click <strong>Add Experience</strong> to start your log.
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {activities.map((item) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          borderRadius: 14,
-                          padding: 14,
-                          background: 'rgba(255,255,255,0.85)',
-                          border: '1px solid rgba(0,0,0,0.06)',
-                          boxShadow: '0 10px 28px rgba(0,0,0,0.06)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                            <span
-                              style={{
-                                fontSize: 12,
-                                padding: '6px 10px',
-                                borderRadius: 999,
-                                background: 'rgba(2, 102, 75, 0.10)',
-                                color: '#02664b',
-                                fontWeight: 700,
-                                letterSpacing: '0.02em',
-                              }}
-                            >
-                              {item.category_name}
-                            </span>
-                            {item.activity_date && (
-                              <span style={{ fontSize: 12, color: '#6d7f7a' }}>
-                                {new Date(item.activity_date).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: '#0b3f33' }}>
-                          {item.title}
-                        </div>
-
-                        {item.description && (
-                          <div style={{ marginTop: 6, color: '#3f534f', lineHeight: 1.45 }}>
-                            {item.description}
-                          </div>
-                        )}
-
-                        {Array.isArray(item.tags) && item.tags.length > 0 && (
-                          <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {item.tags.map((t) => (
-                              <span
-                                key={t}
-                                style={{
-                                  fontSize: 11,
-                                  padding: '4px 8px',
-                                  borderRadius: 999,
-                                  background: 'rgba(0,0,0,0.05)',
-                                  color: '#3f534f',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                #{t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {item.stored_filename && (
-                          <div style={{ marginTop: 10, fontSize: 13, color: '#4e615d' }}>
-                            <AttachmentLink
-                              storedFilename={item.stored_filename}
-                              originalFilename={item.original_filename}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
             {selectedQuadrant && objectives.length > 0 && (
-              <div className="card">
+              <div className="card" ref={objectivesPanelRef}>
                 <h3>{selectedQuadrant.name} – Objectives</h3>
                 <div className="objectives-list">
                   {objectives.map((objective) => (
@@ -463,13 +393,6 @@ function StudentDashboard() {
           objective={selectedObjective}
           onClose={() => setShowUploadModal(false)}
           onSuccess={handleUploadSuccess}
-        />
-      )}
-
-      {showActivityModal && (
-        <ActivityLogModal
-          onClose={() => setShowActivityModal(false)}
-          onSuccess={handleActivitySuccess}
         />
       )}
     </div>
