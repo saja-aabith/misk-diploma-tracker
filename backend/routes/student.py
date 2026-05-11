@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 from datetime import date, datetime
 from typing import Optional
 
@@ -30,6 +31,9 @@ from schemas import (
     ActivityCategoryOut,
     ActivityLogIn,
     ActivityOut,
+    JourneyMilestone,
+    JourneyYear,
+    StudentJourney,
 )
 from utils import (
     UPLOAD_DIR,
@@ -38,6 +42,90 @@ from utils import (
 )
 
 router = APIRouter()
+
+
+# ============================================================
+# Chunk 25 — Journey timeline: curated hero milestones
+# ============================================================
+# Keyed by the alphabetic prefix of a student's username (everything
+# before the 4-digit suffix in e.g. 'ahmed2951@miskschools.edu.sa').
+# Prefixes are stable across reseeds via MISK_TRACKER_SEED.
+#
+# Each entry is a list of (school_year, title, quadrant_name,
+# quadrant_color, month) tuples. school_year must be in [7..12];
+# `month` is the calendar month (1..12) used to construct a plausible
+# display date for the milestone.
+#
+# WHY THIS IS A PYTHON CONSTANT (not a DB table):
+#   For the MVP demo we need a coherent multi-year journey narrative
+#   per hero student. Real `evidence_submissions` only span the last
+#   ~30 days (seeded with random recent dates), so they cannot back a
+#   Year 7→12 narrative. Rather than introduce a new milestones table
+#   (which we may not need in the production model — milestones might
+#   instead be auto-derived from approved submissions on capstone
+#   objectives), we keep curated milestones here, clearly labelled as
+#   demo-time data.
+#
+# WHEN TO REPLACE THIS:
+#   Once real submissions span academic years (i.e. after live use for
+#   one full school year), this constant can be removed and the journey
+#   endpoint switched to read approved evidence_submissions filtered by
+#   capstone-marker objectives (EPQ, Industry Internship Report,
+#   Project 10) plus quadrant-100% achievements.
+HERO_JOURNEY_MILESTONES = {
+    "ahmed": [
+        # Year 7, just started. Intentionally empty — demonstrates the
+        # "blank canvas" view a new student sees.
+    ],
+    "fatima": [
+        # Year 9, balanced. Sparse Year 7–8 trail, one fresh Year 9 win.
+        (7, "First Arabic Language Project", "National Identity", "#2ECC71", 11),
+        (8, "Community Service Award", "Misk Core", "#02664b", 4),
+        (8, "Year 8 Heritage Trip — Diriyah", "Misk Core", "#02664b", 10),
+        (9, "Mock IGCSE Top Score — Maths", "Academic", "#E74C3C", 3),
+    ],
+    "mohammed": [
+        # Year 10, strong Academic + National Identity, sparse elsewhere.
+        # Captures the lopsided narrative visible in the quadrant circle.
+        (7, "Arabic Storytelling Festival", "National Identity", "#2ECC71", 12),
+        (8, "Top of Class — Mathematics", "Academic", "#E74C3C", 6),
+        (8, "Heritage Field Trip — AlUla", "Misk Core", "#02664b", 11),
+        (9, "IGCSE Mock — 95th Percentile", "Academic", "#E74C3C", 5),
+        (9, "Saudi National Day Speech", "National Identity", "#2ECC71", 9),
+        (10, "IGCSE Distinctions × 4", "Academic", "#E74C3C", 6),
+    ],
+    "sara": [
+        # Year 12, nearly complete, with Leadership as the lagging quadrant.
+        # Dense Year 9–11 trail; current Year 12 has the EPQ milestone.
+        (8, "Project 10 Concept Approved", "Misk Core", "#02664b", 1),
+        (9, "IGCSE Mock Excellence", "Academic", "#E74C3C", 3),
+        (9, "Arabic Heritage Documentary", "National Identity", "#2ECC71", 11),
+        (10, "Cultural Residential — Diriyah", "Misk Core", "#02664b", 10),
+        (10, "First Internship Application", "Internship", "#9B59B6", 4),
+        (11, "IGCSE Distinctions × 7", "Academic", "#E74C3C", 6),
+        (11, "Industry Internship Completed", "Internship", "#9B59B6", 8),
+        (11, "Project 10 Public Launch", "Misk Core", "#02664b", 11),
+        (12, "EPQ Research Project Submitted", "Academic", "#E74C3C", 2),
+    ],
+    "abdullah": [
+        # Year 12, gold standard. Every school year flagged across all five
+        # quadrants — full diploma narrative for the demo's "complete" view.
+        (7, "Welcome to Misk Schools", "Misk Core", "#02664b", 9),
+        (7, "Arabic Recitation Award", "National Identity", "#2ECC71", 11),
+        (8, "Year 8 Maths Olympiad", "Academic", "#E74C3C", 5),
+        (8, "Student Council Member", "Leadership", "#F39C12", 10),
+        (9, "IGCSE Mock — Top Performer", "Academic", "#E74C3C", 3),
+        (9, "Project 10 Phase 1 Complete", "Misk Core", "#02664b", 6),
+        (10, "IGCSE Distinctions × 9", "Academic", "#E74C3C", 6),
+        (10, "Career Plan v1 Finalised", "Internship", "#9B59B6", 11),
+        (11, "Industry Internship — Aramco", "Internship", "#9B59B6", 8),
+        (11, "Project 10 Showcase Winner", "Misk Core", "#02664b", 11),
+        (11, "Inter-School Debate Champion", "Leadership", "#F39C12", 2),
+        (12, "EPQ Distinction", "Academic", "#E74C3C", 1),
+        (12, "CMI Level 3 Certified", "Leadership", "#F39C12", 3),
+        (12, "Diploma Complete", "Misk Core", "#02664b", 5),
+    ],
+}
 
 
 # ============================================================
@@ -109,6 +197,61 @@ async def get_dashboard(current_user: dict = Depends(get_current_student)):
         quadrants=quadrants
     )
 
+
+# ============================================================
+# Journey timeline (Chunk 25)
+# ============================================================
+
+@router.get("/journey", response_model=StudentJourney)
+async def get_journey(current_user: dict = Depends(get_current_student)):
+    """Return the authenticated student's MISK Diploma journey timeline.
+
+    Always returns 6 year-cells (Year 7..12). For the 5 hero students the
+    timeline includes curated milestones from HERO_JOURNEY_MILESTONES; for
+    everyone else the year-cells render empty (no milestones) and the
+    student's current_year (if set) is highlighted.
+
+    Auth: student-only. Each student sees only their own journey.
+    """
+    student_id = current_user['user_id']
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT username, student_year FROM users WHERE id = ?",
+        (student_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if row is None:
+        # This shouldn't happen — get_current_student already validated the
+        # user — but defending against it keeps the endpoint robust.
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "STUDENT_NOT_FOUND",
+                "message": "Authenticated student record missing.",
+            },
+        )
+
+    username = row['username']
+    current_year = row['student_year']  # may be None
+
+    prefix = _resolve_username_prefix(username)
+    raw_milestones = HERO_JOURNEY_MILESTONES.get(prefix, []) if prefix else []
+
+    years = _build_journey_years(current_year, prefix, raw_milestones)
+
+    return StudentJourney(
+        current_year=current_year,
+        years=years,
+    )
+
+
+# ============================================================
+# Existing routes (continued)
+# ============================================================
 
 @router.get("/objectives")
 async def get_objectives(
@@ -590,3 +733,98 @@ def _row_to_activity_out(row) -> ActivityOut:
         tags=decoded_tags,
         created_at=row['created_at'],
     )
+
+
+# ---------- Journey helpers (Chunk 25) ----------
+
+# Matches the seeded student-username format:
+#   'ahmed2951@miskschools.edu.sa' -> prefix 'ahmed'
+# Returns None for usernames that don't fit (e.g. teacher usernames
+# or anything unexpected), so callers can degrade gracefully.
+_USERNAME_PREFIX_RE = re.compile(r'^([a-zA-Z]+)\d+@')
+
+
+def _resolve_username_prefix(username: Optional[str]) -> Optional[str]:
+    if not username:
+        return None
+    m = _USERNAME_PREFIX_RE.match(username)
+    return m.group(1).lower() if m else None
+
+
+def _milestone_date(current_year: Optional[int], milestone_year: int,
+                    month: int) -> date:
+    """Compute a plausible display date for a milestone.
+
+    If the student has a current_year set, we anchor the milestone to
+    `today.year - (current_year - milestone_year)` so a Year 10 milestone
+    for a Year 12 student lands ~2 calendar years ago.
+
+    If current_year is unknown (None), we anchor to today's year directly
+    — the milestone won't render in any case (no current_year => the UI
+    treats all years as future and shows no flags), so the exact date
+    doesn't matter.
+
+    Day-of-month is fixed at 15 to keep dates inside every month length
+    without leap-year-style edge cases.
+    """
+    today_year = datetime.now().year
+    if current_year is None:
+        anchor_year = today_year
+    else:
+        anchor_year = today_year - (current_year - milestone_year)
+    return date(anchor_year, month, 15)
+
+
+def _build_journey_years(current_year: Optional[int],
+                         username_prefix: Optional[str],
+                         raw_milestones) -> list:
+    """Build the per-year list (always 6 entries, Years 7..12).
+
+    Each year's status is computed from current_year:
+      - None (not set): every year is 'future'
+      - set:            < current_year -> 'past'
+                        == current_year -> 'current'
+                        > current_year -> 'future'
+
+    Milestones are bucketed by year. We only emit milestones for
+    past/current years; a milestone whose year is ahead of the student's
+    current year is dropped on the floor with no error (curated data
+    shouldn't include those, but defending against typos is cheap).
+    """
+    # Bucket milestones by year, building stable ids for React keys.
+    by_year = {}
+    for idx, (m_year, title, q_name, q_color, month) in enumerate(raw_milestones):
+        # Drop "future" milestones — UI doesn't render them. Curated data
+        # shouldn't include any, but defending against typos costs nothing.
+        if current_year is not None and m_year > current_year:
+            continue
+        bucket = by_year.setdefault(m_year, [])
+        bucket.append(
+            JourneyMilestone(
+                id=f"{username_prefix or 'unknown'}-{idx}",
+                title=title,
+                quadrant_name=q_name,
+                quadrant_color=q_color,
+                date=_milestone_date(current_year, m_year, month),
+            )
+        )
+
+    years = []
+    for y in range(7, 13):
+        if current_year is None:
+            status = "future"
+        elif y < current_year:
+            status = "past"
+        elif y == current_year:
+            status = "current"
+        else:
+            status = "future"
+        years.append(
+            JourneyYear(
+                year=y,
+                status=status,
+                completion_pct=None,  # reserved for future use
+                milestones=by_year.get(y, []),
+            )
+        )
+    return years

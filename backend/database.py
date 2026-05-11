@@ -123,6 +123,26 @@ HERO_PROGRESS_PROFILES = {
     },
 }
 
+# ---------------------------------------------------------------------
+# Chunk 25: hero student grade-year assignments for the journey timeline.
+#
+# Indexed by the same seed_order indices used by HERO_PROGRESS_PROFILES.
+# The journey timeline spans Year 7..12 (the MISK Schools Diploma window).
+# Years are also displayed on the dashboard implicitly via the timeline
+# UI; the value lives in users.student_year (nullable integer).
+#
+# Non-hero students retain a NULL student_year, which the journey
+# endpoint and UI handle gracefully ("Year not yet set" subtitle, all
+# nodes rendered as muted outlines).
+# ---------------------------------------------------------------------
+HERO_STUDENT_YEARS = {
+    0: 7,   # Ahmed Al-Dosari    — Near-empty profile
+    1: 9,   # Fatima Al-Mansouri — Mid-balanced profile
+    2: 10,  # Mohammed Al-Harbi  — Mid-lopsided profile
+    3: 12,  # Sara Al-Ghamdi     — Nearly-complete profile (Leadership lagging)
+    4: 12,  # Abdullah Al-Otaibi — Gold standard profile
+}
+
 
 def get_db():
     """Get database connection"""
@@ -266,14 +286,17 @@ def init_database():
     """)
 
     # ---------------------------------------------------------------
-    # Idempotent ALTER TABLE migrations on evidence_submissions
+    # Idempotent ALTER TABLE migrations
     # ---------------------------------------------------------------
+    # evidence_submissions: file metadata columns from earlier chunks.
+    # users: student_year column added Chunk 25 for the journey timeline.
     for ddl in (
         "ALTER TABLE evidence_submissions ADD COLUMN stored_filename TEXT",
         "ALTER TABLE evidence_submissions ADD COLUMN original_filename TEXT",
         "ALTER TABLE evidence_submissions ADD COLUMN file_extension TEXT",
         "ALTER TABLE evidence_submissions ADD COLUMN file_size_bytes INTEGER",
         "ALTER TABLE evidence_submissions ADD COLUMN mime_type TEXT",
+        "ALTER TABLE users ADD COLUMN student_year INTEGER",
     ):
         try:
             cursor.execute(ddl)
@@ -320,6 +343,12 @@ def init_database():
     # gated on `name='Misk Core'` so existing DBs pick it up on next
     # startup without requiring a full reseed.
     seed_misk_core_quadrant(conn)
+
+    # Chunk 25: ensure hero students have student_year set. Idempotent —
+    # only writes rows where student_year IS NULL, so existing DBs pick
+    # up the hero years on next startup without overwriting any manual
+    # values that might already be there.
+    seed_hero_student_years(conn)
 
     conn.close()
 
@@ -514,6 +543,45 @@ def seed_misk_core_quadrant(conn):
     )
 
 
+def seed_hero_student_years(conn):
+    """Ensure the 5 hero students have a student_year assigned.
+
+    Idempotent in two ways:
+    1. Only fires UPDATE on rows where student_year IS NULL, so any value
+       set manually (or by a previous run of this function) is preserved.
+    2. Safe to call on every startup, including against DBs that predate
+       Chunk 25.
+
+    Selection: ORDER BY id LIMIT 5 — matches the seed_index 0..4 used by
+    HERO_PROGRESS_PROFILES (students are inserted in deterministic order
+    in seed_data; teachers occupy ids 1–2).
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM users WHERE role = 'student' ORDER BY id LIMIT 5"
+    )
+    rows = cursor.fetchall()
+    if len(rows) < 5:
+        # No students or partial seed; skip to avoid mis-assigning years.
+        return
+
+    updates = 0
+    for seed_index, row in enumerate(rows):
+        year = HERO_STUDENT_YEARS.get(seed_index)
+        if year is None:
+            continue
+        cursor.execute(
+            "UPDATE users SET student_year = ? "
+            "WHERE id = ? AND student_year IS NULL",
+            (year, row[0]),
+        )
+        updates += cursor.rowcount
+
+    if updates > 0:
+        conn.commit()
+        print(f"✓ Hero student years seeded ({updates} updated)")
+
+
 def seed_data(conn):
     """Seed database with realistic test data.
 
@@ -610,11 +678,11 @@ def seed_data(conn):
     # remapping the hero profiles, or the demo narrative will silently
     # attach to the wrong student names.
     student_seed = [
-        ("ahmed",    "Ahmed Al-Dosari"),       # seed_index 0 — hero: Near-empty
-        ("fatima",   "Fatima Al-Mansouri"),    # seed_index 1 — hero: Mid-balanced
-        ("mohammed", "Mohammed Al-Harbi"),     # seed_index 2 — hero: Mid-lopsided
-        ("sara",     "Sara Al-Ghamdi"),        # seed_index 3 — hero: Nearly complete
-        ("abdullah", "Abdullah Al-Otaibi"),    # seed_index 4 — hero: Gold standard
+        ("ahmed",    "Ahmed Al-Dosari"),       # seed_index 0 — hero: Near-empty   (Year 7)
+        ("fatima",   "Fatima Al-Mansouri"),    # seed_index 1 — hero: Mid-balanced (Year 9)
+        ("mohammed", "Mohammed Al-Harbi"),     # seed_index 2 — hero: Mid-lopsided (Year 10)
+        ("sara",     "Sara Al-Ghamdi"),        # seed_index 3 — hero: Nearly complete (Year 12)
+        ("abdullah", "Abdullah Al-Otaibi"),    # seed_index 4 — hero: Gold standard (Year 12)
         ("noura",    "Noura Al-Qahtani"),
         ("khalid",   "Khalid Al-Mutairi"),
         ("lama",     "Lama Al-Shehri"),

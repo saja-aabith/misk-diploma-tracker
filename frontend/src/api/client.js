@@ -50,6 +50,14 @@ export const student = {
   getSubmissions: (status = 'all') =>
     apiClient.get('/student/submissions', { params: { status } }),
 
+  // GET /student/journey — Chunk 25
+  // Returns the authenticated student's Year 7→12 timeline with
+  // milestones for the curated hero students; empty per-year buckets
+  // otherwise. See StudentJourney in backend/schemas.py for the
+  // exact response shape.
+  getJourney: () =>
+    apiClient.get('/student/journey'),
+
   // ----- Misk Core -----
 
   // GET /student/activity-categories

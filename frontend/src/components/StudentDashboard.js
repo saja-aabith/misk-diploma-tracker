@@ -4,6 +4,7 @@ import { getUser, logout } from '../utils/auth';
 import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
 import AttachmentLink from './AttachmentLink';
+import JourneyTimeline from './JourneyTimeline';
 
 /**
  * Helper: clamp any % between 0 and 100
@@ -285,6 +286,10 @@ function StudentDashboard() {
                 ))}
               </div>
             </div>
+
+            {/* MISK Journey timeline (Chunk 25) — sits between the
+                quadrant circle card and the objectives drill-down panel. */}
+            <JourneyTimeline />
 
             {selectedQuadrant && objectives.length > 0 && (
               <div className="card" ref={objectivesPanelRef}>

@@ -1,0 +1,280 @@
+/* -------------------------------------------------------------
+   JourneyTimeline — Year 7→12 horizontal strip
+   Calm, institutional. No 3D, no neon. Pairs with the existing
+   .card wrapper from App.css.
+------------------------------------------------------------- */
+
+.journey-card {
+  padding-bottom: 32px;
+}
+
+/* Header ------------------------------------------------------ */
+
+.journey-header {
+  margin-bottom: 16px;
+}
+
+.journey-header h3 {
+  margin: 0 0 4px 0;
+}
+
+.journey-subtitle {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.65;
+  letter-spacing: 0.02em;
+}
+
+.journey-loading {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+/* Track wrapper ---------------------------------------------- */
+
+.journey-track-wrapper {
+  position: relative;
+  padding: 90px 24px 24px;  /* room above for flags, below for labels */
+}
+
+/* The straight horizontal line behind the nodes. */
+.journey-track {
+  position: absolute;
+  top: 95px;
+  left: 28px;
+  right: 28px;
+  height: 3px;
+  background: rgba(2, 102, 75, 0.16);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+/* The animated fill — extends from Year 7 (leftmost) to the current
+   year's centre. width is controlled inline from JS. */
+.journey-track-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #02664b 0%, #04a679 100%);
+  border-radius: 3px;
+  box-shadow: 0 0 10px rgba(2, 102, 75, 0.45);
+  transition: width 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Nodes layout — 6 equal columns over the track. ------------- */
+
+.journey-nodes {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  align-items: end;
+  min-width: 540px;  /* keeps nodes readable on narrow viewports */
+}
+
+.journey-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
+/* The dot/circle marker for each year. Positioned to sit on the track. */
+.journey-node-dot {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: transparent;
+  margin-bottom: 10px;
+  margin-top: 0;
+  z-index: 2;
+  transition: background 300ms ease, border-color 300ms ease,
+              box-shadow 300ms ease;
+}
+
+.journey-node--past .journey-node-dot {
+  background: #02664b;
+  box-shadow: 0 0 0 4px rgba(2, 102, 75, 0.18);
+}
+
+.journey-node--current .journey-node-dot {
+  background: #02664b;
+  box-shadow:
+    0 0 0 4px rgba(2, 102, 75, 0.28),
+    0 0 14px rgba(2, 102, 75, 0.55);
+  border: 2px solid #ffffff;
+  width: 18px;
+  height: 18px;
+}
+
+.journey-node--future .journey-node-dot {
+  background: transparent;
+  border: 2px dashed rgba(2, 102, 75, 0.35);
+  box-shadow: none;
+}
+
+/* Single, gentle pulse ring on the current year. ------------- */
+
+.journey-node-glow {
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(2, 102, 75, 0.30) 0%,
+    rgba(2, 102, 75, 0) 70%
+  );
+  animation: journey-glow-pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes journey-glow-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1.45);
+    opacity: 0.25;
+  }
+}
+
+/* Year label below each node. -------------------------------- */
+
+.journey-node-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.journey-node--current .journey-node-label {
+  color: #02664b;
+  opacity: 1;
+}
+
+.journey-node--future .journey-node-label {
+  opacity: 0.35;
+}
+
+/* Flags above each node. ------------------------------------- */
+
+/* The flag stack sits above the track, growing upward from the node.
+   bottom is positioned relative to .journey-node so flags stay
+   anchored to their year regardless of how many there are. */
+.journey-flags {
+  position: absolute;
+  bottom: calc(100% - 28px);  /* anchored just above the dot */
+  display: flex;
+  flex-direction: column-reverse;  /* newest milestone at top */
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;  /* hover routes via individual flags */
+}
+
+.journey-flag {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  outline: none;
+}
+
+.journey-flag-pole {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 1px;
+  height: 6px;
+  background: rgba(2, 102, 75, 0.35);
+  transform: translateX(-50%);
+}
+
+.journey-flag-body {
+  width: 12px;
+  height: 12px;
+  background: var(--flag-color);
+  border: 2px solid #ffffff;
+  border-radius: 3px;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.18),
+    0 0 8px var(--flag-color);
+  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+}
+
+.journey-flag:hover .journey-flag-body,
+.journey-flag:focus .journey-flag-body {
+  transform: scale(1.45);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    0 0 14px var(--flag-color);
+}
+
+/* Hover tooltip. -------------------------------------------- */
+
+.journey-flag-tooltip {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: rgba(0, 35, 20, 0.95);
+  color: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.journey-flag-tooltip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-top: 3px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+.journey-flag-tooltip-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+  line-height: 1.3;
+}
+
+.journey-flag-tooltip-meta {
+  font-size: 11px;
+  opacity: 0.78;
+  letter-spacing: 0.02em;
+}
+
+/* Responsive tweaks. ---------------------------------------- */
+
+@media (max-width: 768px) {
+  .journey-track-wrapper {
+    padding: 80px 12px 20px;
+  }
+
+  .journey-track {
+    left: 18px;
+    right: 18px;
+  }
+
+  .journey-nodes {
+    min-width: 480px;
+  }
+
+  .journey-flag-tooltip {
+    right: 12px;
+    max-width: 240px;
+  }
+}

@@ -332,3 +332,58 @@ class StudentProfileOut(BaseModel):
     student_name: str
     email: str
     activities: List[ActivityOut] = Field(default_factory=list)
+
+
+# ============================================================
+# Journey timeline models (Chunk 25)
+# ============================================================
+# Backs the GET /student/journey endpoint. Renders a Year 7 → Year 12
+# timeline on the student dashboard with milestone "flag" markers per
+# year, drawn from a curated demo-time constant for the 5 hero students
+# and empty for everyone else.
+#
+# All three models are response-only — no inbound write path uses these.
+
+class JourneyMilestone(BaseModel):
+    """A single curated milestone on a student's journey timeline.
+
+    `id` is a stable per-student identifier composed from the student's
+    username prefix and milestone index — purely a React key, not a
+    DB row id.
+    """
+    id: str
+    title: str
+    quadrant_name: str
+    quadrant_color: str
+    date: date
+
+
+class JourneyYear(BaseModel):
+    """One year-cell in the timeline.
+
+    `status` is one of: 'past' | 'current' | 'future'.
+      - 'past': the student has progressed beyond this year
+      - 'current': the student's currently-enrolled year
+      - 'future': year ahead of the student (rendered muted)
+    `completion_pct` is currently None for all years (placeholder for a
+    future per-year completion calculation); kept in the schema so the
+    frontend can wire it without a contract change later.
+    """
+    year: int = Field(..., ge=7, le=12)
+    status: str
+    completion_pct: Optional[float] = None
+    milestones: List[JourneyMilestone] = Field(default_factory=list)
+
+
+class StudentJourney(BaseModel):
+    """Full journey payload for the authenticated student.
+
+    `current_year` is None when the student has no `student_year` set
+    in the database — the UI handles this by rendering all 6 nodes as
+    muted outlines with a "Year not yet set" subtitle.
+
+    `years` always contains exactly 6 entries (years 7..12 in order),
+    so the frontend can rely on a fixed-shape array.
+    """
+    current_year: Optional[int] = Field(default=None, ge=7, le=12)
+    years: List[JourneyYear]
