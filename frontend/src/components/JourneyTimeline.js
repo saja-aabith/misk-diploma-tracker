@@ -1,22 +1,33 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  BookOpenCheck,
+  BriefcaseBusiness,
+  Landmark,
+  Mountain,
+  Sparkles,
+  Flag as FlagIcon,
+} from 'lucide-react';
 import { student } from '../api/client';
 import './JourneyTimeline.css';
 
 /**
- * JourneyTimeline — Year 7→12 horizontal strip on the student dashboard.
+ * JourneyTimeline — Grade 7→12 horizontal strip on the student dashboard.
  *
- * Renders 6 year-nodes from a /student/journey payload. Each year may
- * carry milestone "flags" coloured by quadrant. The current year is
- * emphasised with a soft MISK-green glow ring; future years are muted
+ * Renders 6 grade-nodes from a /student/journey payload. Each grade may
+ * carry milestone pennant "flags" coloured by quadrant. The current grade
+ * is emphasised with a soft MISK-green glow ring; future grades are muted
  * dashed outlines.
  *
  * Animation choreography on mount (post-data-load):
- *   1. Track fill animates left-to-right to current-year position (~800ms)
- *   2. Flags fade in with stagger after the track reaches each year
+ *   1. Track fill animates left-to-right to the current-grade position (~900ms)
+ *   2. Pennant flags fade-in with stagger, then sway gently in a loop
  *
- * If the student has no current_year set (e.g. non-hero seeded students),
- * the component still renders cleanly: all 6 nodes show as muted outlines
- * with a "Year not yet set" subtitle and no flags.
+ * IMPORTANT NAMING NOTE:
+ *   This component refers to school stage as "Grade" in all user-visible
+ *   strings (e.g. "Grade 9", "Grade not yet set"). The underlying backend
+ *   names — `student_year` on the users table, `year` in the
+ *   /student/journey JSON payload — remain unchanged so we don't break
+ *   the API contract or DB schema. The relabel is purely presentational.
  */
 function JourneyTimeline() {
   const [journey, setJourney] = useState(null);
@@ -53,9 +64,9 @@ function JourneyTimeline() {
     };
   }, []);
 
-  // Track fill width: extends from the leftmost node (Year 7) to the
-  // centre of the current-year node. Six nodes span 5 segments, so the
-  // current year's centre sits at ((current - 7) / 5) * 100 %.
+  // Track fill width: extends from the leftmost node (Grade 7) to the
+  // centre of the current-grade node. Six nodes span 5 segments, so the
+  // current grade's centre sits at ((current - 7) / 5) * 100 %.
   // When current_year is null we want a 0-width fill.
   const trackFillPct = useMemo(() => {
     if (!journey || journey.current_year == null) return 0;
@@ -94,8 +105,8 @@ function JourneyTimeline() {
         <h3>Your MISK Journey</h3>
         <p className="journey-subtitle">
           {journey.current_year
-            ? `Currently in Year ${journey.current_year} · ${totalMilestones} milestone${totalMilestones === 1 ? '' : 's'} earned`
-            : 'Year not yet set'}
+            ? `Currently in Grade ${journey.current_year} · ${totalMilestones} milestone${totalMilestones === 1 ? '' : 's'} earned`
+            : 'Grade not yet set'}
         </p>
       </div>
 
@@ -145,7 +156,7 @@ function JourneyNode({ yearData, animated, flagDelayBaseMs, onFlagHover }) {
     <div className={`journey-node journey-node--${status}`}>
       <div className="journey-flags">
         {milestones.map((m, idx) => (
-          <Flag
+          <Pennant
             key={m.id}
             milestone={m}
             animated={animated}
@@ -159,19 +170,37 @@ function JourneyNode({ yearData, animated, flagDelayBaseMs, onFlagHover }) {
         {status === 'current' && <span className="journey-node-glow" aria-hidden="true" />}
       </div>
 
-      <div className="journey-node-label">Year {year}</div>
+      <div className="journey-node-label">Grade {year}</div>
     </div>
   );
 }
 
-function Flag({ milestone, animated, delayMs, onHover }) {
+/**
+ * Pennant — triangular flag marker with quadrant icon and ambient
+ * sway/pulse-glow animations.
+ *
+ * Visual structure:
+ *   - .journey-pennant-pole     — thin vertical line, the "flagpole"
+ *   - .journey-pennant-flag     — clip-pathed triangle, quadrant colour
+ *   - .journey-pennant-icon     — quadrant Lucide icon, white on colour
+ *
+ * The sway animation rotates the .journey-pennant-stem (pole + flag
+ * together) around the bottom of the pole so the pennant tip arcs
+ * naturally, like a flag fluttering in light wind. Pulse glow is on the
+ * triangle itself, breathing the box-shadow. Both pause on hover/focus
+ * so the user can read the flag and trigger the tooltip without the
+ * marker drifting under the cursor.
+ */
+function Pennant({ milestone, animated, delayMs, onHover }) {
+  const Icon = QUADRANT_ICON_MAP[milestone.quadrant_name] || FlagIcon;
+
   return (
     <div
       className="journey-flag"
       style={{
         '--flag-color': milestone.quadrant_color,
         opacity: animated ? 1 : 0,
-        transform: animated ? 'translateY(0)' : 'translateY(6px)',
+        transform: animated ? 'translateY(0)' : 'translateY(8px)',
         transition: `opacity 320ms ease-out ${delayMs}ms, transform 320ms ease-out ${delayMs}ms`,
       }}
       onMouseEnter={() => onHover(milestone)}
@@ -182,11 +211,29 @@ function Flag({ milestone, animated, delayMs, onHover }) {
       role="button"
       aria-label={`${milestone.title}, ${milestone.quadrant_name}`}
     >
-      <span className="journey-flag-pole" aria-hidden="true" />
-      <span className="journey-flag-body" aria-hidden="true" />
+      <span className="journey-pennant-stem" aria-hidden="true">
+        <span className="journey-pennant-pole" />
+        <span className="journey-pennant-flag">
+          <span className="journey-pennant-icon">
+            <Icon size={14} strokeWidth={2.5} color="#ffffff" />
+          </span>
+        </span>
+      </span>
     </div>
   );
 }
+
+// Quadrant name -> Lucide icon component. Keyed by the exact strings
+// returned by the backend (`JourneyMilestone.quadrant_name`), which
+// match `quadrants.name`. If an unknown name appears we fall back to a
+// generic Flag icon at the call site so the UI degrades cleanly.
+const QUADRANT_ICON_MAP = {
+  Academic: BookOpenCheck,
+  Internship: BriefcaseBusiness,
+  'National Identity': Landmark,
+  Leadership: Mountain,
+  'Misk Core': Sparkles,
+};
 
 function formatMilestoneDate(iso) {
   if (!iso) return '';

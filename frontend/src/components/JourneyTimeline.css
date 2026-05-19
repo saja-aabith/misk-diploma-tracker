@@ -1,7 +1,12 @@
 /* -------------------------------------------------------------
-   JourneyTimeline — Year 7→12 horizontal strip
+   JourneyTimeline — Grade 7→12 horizontal strip
    Calm, institutional. No 3D, no neon. Pairs with the existing
    .card wrapper from App.css.
+
+   Naming: user-visible labels say "Grade" but CSS class names keep
+   the historical "year" / "journey-node" / "journey-flag" tokens so
+   no upstream selectors break. Pennant-specific elements use the
+   "pennant" prefix.
 ------------------------------------------------------------- */
 
 .journey-card {
@@ -32,17 +37,23 @@
   opacity: 0.55;
 }
 
-/* Track wrapper ---------------------------------------------- */
+/* Track wrapper ----------------------------------------------
+   Top padding sets the headroom for stacked pennants. Bigger
+   pennants + more vertical stack = more top padding required;
+   bumped from 90px (dot-era) to 150px to fit ~5 pennants without
+   clipping the topmost one. Students with very dense milestone
+   columns (e.g. Abdullah, Grade 11) will still fit because flags
+   render via column-reverse with overflow: visible. */
 
 .journey-track-wrapper {
   position: relative;
-  padding: 90px 24px 24px;  /* room above for flags, below for labels */
+  padding: 150px 24px 24px;
 }
 
 /* The straight horizontal line behind the nodes. */
 .journey-track {
   position: absolute;
-  top: 95px;
+  top: 155px;  /* tracks the top padding above so the line sits at the dots */
   left: 28px;
   right: 28px;
   height: 3px;
@@ -51,8 +62,8 @@
   overflow: hidden;
 }
 
-/* The animated fill — extends from Year 7 (leftmost) to the current
-   year's centre. width is controlled inline from JS. */
+/* The animated fill — extends from Grade 7 (leftmost) to the current
+   grade's centre. width is controlled inline from JS. */
 .journey-track-fill {
   height: 100%;
   background: linear-gradient(90deg, #02664b 0%, #04a679 100%);
@@ -79,7 +90,7 @@
   position: relative;
 }
 
-/* The dot/circle marker for each year. Positioned to sit on the track. */
+/* The dot/circle marker for each grade. Positioned to sit on the track. */
 .journey-node-dot {
   position: relative;
   width: 16px;
@@ -114,7 +125,7 @@
   box-shadow: none;
 }
 
-/* Single, gentle pulse ring on the current year. ------------- */
+/* Single, gentle pulse ring on the current grade. ------------ */
 
 .journey-node-glow {
   position: absolute;
@@ -140,7 +151,7 @@
   }
 }
 
-/* Year label below each node. -------------------------------- */
+/* Grade label below each node. ------------------------------- */
 
 .journey-node-label {
   font-size: 12px;
@@ -159,64 +170,183 @@
   opacity: 0.35;
 }
 
-/* Flags above each node. ------------------------------------- */
+/* ============================================================
+   Pennant flags above each node
+   ============================================================
+   Visual model: a thin pole carries a triangular flag with a
+   quadrant-coloured fill and a white icon centred on the flag
+   body. The whole stem (pole + flag) sways together around the
+   bottom of the pole, like a real pennant in light wind. */
 
-/* The flag stack sits above the track, growing upward from the node.
-   bottom is positioned relative to .journey-node so flags stay
-   anchored to their year regardless of how many there are. */
+/* The flag stack sits above the track, growing upward from the
+   node. bottom is positioned relative to .journey-node so flags
+   stay anchored to their grade regardless of how many there are.
+   gap was tightened to 4px because the bigger pennants already
+   give visual breathing room on their own. */
+
 .journey-flags {
   position: absolute;
   bottom: calc(100% - 28px);  /* anchored just above the dot */
   display: flex;
   flex-direction: column-reverse;  /* newest milestone at top */
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   pointer-events: none;  /* hover routes via individual flags */
 }
 
+/* Each .journey-flag is the hover/focus target box. It's
+   transparent itself — the visible pennant lives inside via
+   .journey-pennant-stem. ~2x the previous 16px dot size. */
+
 .journey-flag {
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: 30px;
+  height: 30px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   cursor: pointer;
   pointer-events: auto;
   outline: none;
 }
 
-.journey-flag-pole {
+/* The stem (pole + flag) is the swaying unit. transform-origin
+   is at the bottom-centre so the rotation pivots at the foot of
+   the pole — the pennant tip arcs at the top, which is what we
+   want for a flag-flutter look. */
+
+.journey-pennant-stem {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+  animation: journey-pennant-sway 3.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Stagger sway phases so a wall of pennants doesn't all rock in
+   lockstep. We use :nth-of-type on the wrapping .journey-flag
+   element which is the actual sibling element here. */
+
+.journey-flag:nth-of-type(2n) .journey-pennant-stem {
+  animation-delay: -0.8s;
+  animation-duration: 3.6s;
+}
+
+.journey-flag:nth-of-type(3n) .journey-pennant-stem {
+  animation-delay: -1.6s;
+  animation-duration: 2.9s;
+}
+
+@keyframes journey-pennant-sway {
+  0%, 100% {
+    transform: rotate(-1.6deg);
+  }
+  50% {
+    transform: rotate(1.6deg);
+  }
+}
+
+/* The flagpole. Thin, slightly translucent so it doesn't compete
+   with the pennant face. Sits at the centre of the stem box. */
+
+.journey-pennant-pole {
   position: absolute;
-  bottom: -6px;
   left: 50%;
-  width: 1px;
-  height: 6px;
-  background: rgba(2, 102, 75, 0.35);
+  bottom: 0;
+  width: 1.5px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(2, 102, 75, 0.55) 0%,
+    rgba(2, 102, 75, 0.30) 100%
+  );
   transform: translateX(-50%);
+  border-radius: 1px;
 }
 
-.journey-flag-body {
-  width: 12px;
-  height: 12px;
+/* The triangular pennant. clip-path renders a right-pointing
+   triangle from the top of the pole; box-shadow gives the soft
+   pulse glow. var(--flag-color) is set inline from the milestone's
+   quadrant_color so every pennant inherits its quadrant identity. */
+
+.journey-pennant-flag {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 28px;
+  height: 18px;
   background: var(--flag-color);
-  border: 2px solid #ffffff;
-  border-radius: 3px;
+  /* Triangle pointing right, anchored to the pole on the left. */
+  clip-path: polygon(0% 0%, 100% 50%, 0% 100%);
+  display: flex;
+  align-items: center;
+  /* Push the icon left of centre so it sits inside the wider
+     left edge of the triangle rather than getting clipped by the
+     right-hand point. */
+  padding-left: 4px;
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.18),
-    0 0 8px var(--flag-color);
-  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+    0 2px 6px rgba(0, 0, 0, 0.20),
+    0 0 12px var(--flag-color);
+  animation: journey-pennant-pulse 2.6s ease-in-out infinite;
+  will-change: filter, box-shadow;
 }
 
-.journey-flag:hover .journey-flag-body,
-.journey-flag:focus .journey-flag-body {
-  transform: scale(1.45);
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.25),
-    0 0 14px var(--flag-color);
+/* Pulse glow — the box-shadow's blur radius breathes so the
+   pennant looks gently lit. Kept subtle (institutional, not
+   neon). */
+
+@keyframes journey-pennant-pulse {
+  0%, 100% {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.20),
+      0 0 10px var(--flag-color);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.25),
+      0 0 18px var(--flag-color);
+    filter: brightness(1.08);
+  }
 }
 
-/* Hover tooltip. -------------------------------------------- */
+/* The icon sits inside the triangular pennant. Width is narrower
+   than the SVG's natural 14px because the triangle tapers; the
+   icon container itself stays small and centred vertically. */
+
+.journey-pennant-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  /* Slight drop-shadow so the white icon stays legible on the
+     lighter quadrant colours (Internship purple is OK, but the
+     orange Leadership and green Misk Core can wash out white). */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+/* Hover / focus: pause sway so the user can read the pennant,
+   scale up the whole stem slightly, and brighten the glow. */
+
+.journey-flag:hover .journey-pennant-stem,
+.journey-flag:focus .journey-pennant-stem {
+  animation-play-state: paused;
+  transform: scale(1.18) rotate(0deg);
+  transition: transform 0.18s ease-out;
+}
+
+.journey-flag:hover .journey-pennant-flag,
+.journey-flag:focus .journey-pennant-flag {
+  animation-play-state: paused;
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.28),
+    0 0 22px var(--flag-color);
+  filter: brightness(1.12);
+}
+
+/* Tooltip ---------------------------------------------------- */
 
 .journey-flag-tooltip {
   position: absolute;
@@ -257,14 +387,15 @@
   letter-spacing: 0.02em;
 }
 
-/* Responsive tweaks. ---------------------------------------- */
+/* Responsive tweaks ------------------------------------------ */
 
 @media (max-width: 768px) {
   .journey-track-wrapper {
-    padding: 80px 12px 20px;
+    padding: 130px 12px 20px;
   }
 
   .journey-track {
+    top: 135px;
     left: 18px;
     right: 18px;
   }
@@ -276,5 +407,17 @@
   .journey-flag-tooltip {
     right: 12px;
     max-width: 240px;
+  }
+}
+
+/* Reduced-motion respect: users who prefer reduced motion get
+   static pennants with no sway and no pulse. Hover scale still
+   works because it's user-initiated. */
+
+@media (prefers-reduced-motion: reduce) {
+  .journey-pennant-stem,
+  .journey-pennant-flag,
+  .journey-node-glow {
+    animation: none !important;
   }
 }
