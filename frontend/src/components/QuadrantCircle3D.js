@@ -723,7 +723,12 @@ function hexToRgb(hex) {
 //   100% -> white #ffffff (legible on green fill)
 // Linear in the 0..100 range. No special-case thresholds; smooth fade.
 function interpolateMiskCoreTitleColor(pct) {
-  const t = clampPct(pct) / 100;
+  // The green fill disk's RADIUS scales with sqrt(pct) (area-proportional
+  // fill, see pctToMiskCoreFillRadius). The colour fade must use the SAME
+  // curve, otherwise at mid percentages the disk has already grown over the
+  // text while the colour is still dark green — washing the title out.
+  // Matching sqrt keeps text legible against whatever is currently behind it.
+  const t = Math.sqrt(clampPct(pct) / 100);
   return lerpHex('#02664b', '#ffffff', t);
 }
 
@@ -731,7 +736,9 @@ function interpolateMiskCoreTitleColor(pct) {
 // the subtitle stays visually subordinate to the title at every state
 // rather than competing with white-on-green.
 function interpolateMiskCoreSubtitleColor(pct) {
-  const t = clampPct(pct) / 100;
+  // Same sqrt curve as the title (and the fill disk) — see
+  // interpolateMiskCoreTitleColor for the rationale.
+  const t = Math.sqrt(clampPct(pct) / 100);
   return lerpHex('#0a5c49', '#e6fff6', t);
 }
 
@@ -739,7 +746,10 @@ function interpolateMiskCoreSubtitleColor(pct) {
 // background under dark text), strong at 100% (lifts white text off
 // the green fill). Linear across the range.
 function interpolateMiskCoreShadowOpacity(pct) {
-  const t = clampPct(pct) / 100;
+  // Same sqrt curve — the shadow needs to be present as soon as the green
+  // disk reaches the text, which (being radius-based) happens on the sqrt
+  // schedule, not the linear one.
+  const t = Math.sqrt(clampPct(pct) / 100);
   const MIN_OPACITY = 0.0;
   const MAX_OPACITY = 0.55;
   return MIN_OPACITY + (MAX_OPACITY - MIN_OPACITY) * t;
