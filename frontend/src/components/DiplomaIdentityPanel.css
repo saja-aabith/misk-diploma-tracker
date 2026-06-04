@@ -1,0 +1,178 @@
+/* -------------------------------------------------------------
+   DiplomaIdentityPanel — placed beside QuadrantCircle3D on the
+   student dashboard. Owns both its own internal styling AND the
+   .diploma-stage flex layout that wraps panel + circle, because
+   those two concerns are co-located in StudentDashboard.js and
+   it keeps related rules in one file.
+
+   Design intent: calm, institutional, dignified. Reads like a
+   student ID card from a real school portal, not a flashy widget.
+------------------------------------------------------------- */
+
+/* Layout: panel sits to the left of the circle on desktop, stacks
+   above the circle on mobile. The previous inline flex wrapper
+   in StudentDashboard is replaced by this class. */
+
+.diploma-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  margin: 26px 0 10px;
+  flex-wrap: wrap;
+}
+
+.diploma-stage-circle {
+  flex: 0 0 auto;
+}
+
+/* The panel itself. ----------------------------------------- */
+
+.diploma-identity-panel {
+  flex: 0 0 auto;
+  width: 240px;
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+
+  /* Sits as a subtle inset card on top of the larger .card
+     background. Soft green wash + 1px rim — institutional, not
+     glassy. */
+  background: linear-gradient(
+    180deg,
+    rgba(2, 102, 75, 0.045) 0%,
+    rgba(2, 102, 75, 0.015) 100%
+  );
+  border-radius: 18px;
+  border: 1px solid rgba(2, 102, 75, 0.12);
+  box-shadow:
+    0 1px 2px rgba(2, 102, 75, 0.05),
+    0 8px 24px rgba(2, 102, 75, 0.06);
+}
+
+/* Avatar: gradient disc with white initials and an inset white
+   ring for a small "embossed" feel. */
+
+.diploma-identity-avatar {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #02664b 0%, #04a679 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  box-shadow:
+    0 8px 22px rgba(2, 102, 75, 0.28),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.92);
+}
+
+.diploma-identity-avatar-initials {
+  color: #ffffff;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  /* Slight shadow keeps the white legible on the lighter top of
+     the gradient. */
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Name and grade. ------------------------------------------- */
+
+.diploma-identity-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0a3d2b;
+  line-height: 1.3;
+  margin-bottom: 10px;
+  /* Wrap long names rather than truncating — we'd rather show
+     the whole name on two lines than ellipsise. */
+  word-break: break-word;
+}
+
+.diploma-identity-grade-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: #02664b;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  background: rgba(2, 102, 75, 0.09);
+  border-radius: 999px;
+  margin-bottom: 18px;
+}
+
+/* Divider + meta block. ------------------------------------- */
+
+.diploma-identity-divider {
+  width: 40px;
+  height: 1px;
+  background: rgba(2, 102, 75, 0.20);
+  margin-bottom: 14px;
+}
+
+.diploma-identity-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 16px;
+}
+
+.diploma-identity-school {
+  font-size: 11px;
+  font-weight: 700;
+  color: #02664b;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.diploma-identity-cohort {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  letter-spacing: 0.02em;
+}
+
+/* Overall progress mini-stat. ------------------------------- */
+
+.diploma-identity-completion {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(2, 102, 75, 0.12);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.diploma-identity-completion-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(2, 102, 75, 0.7);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.diploma-identity-completion-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #02664b;
+  letter-spacing: -0.01em;
+}
+
+/* Mobile: stack panel above circle. ------------------------- */
+
+@media (max-width: 768px) {
+  .diploma-stage {
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .diploma-identity-panel {
+    width: 100%;
+    max-width: 320px;
+  }
+}

@@ -5,6 +5,7 @@ import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
 import AttachmentLink from './AttachmentLink';
 import JourneyTimeline from './JourneyTimeline';
+import DiplomaIdentityPanel from './DiplomaIdentityPanel';
 
 /**
  * Helper: clamp any % between 0 and 100
@@ -268,12 +269,21 @@ function StudentDashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '26px 0 10px' }}>
-                <QuadrantCircle3D
-                  size={400}
-                  onMiskCoreClick={selectMiskCore}
-                  completionByName={completionByName}
+              {/* Diploma Identity panel sits beside the quadrant circle on
+                  desktop, stacks above it on mobile. Layout lives in
+                  DiplomaIdentityPanel.css under .diploma-stage. */}
+              <div className="diploma-stage">
+                <DiplomaIdentityPanel
+                  studentName={dashboardData?.student_name}
+                  overallCompletion={dashboardData?.overall_completion_percentage}
                 />
+                <div className="diploma-stage-circle">
+                  <QuadrantCircle3D
+                    size={400}
+                    onMiskCoreClick={selectMiskCore}
+                    completionByName={completionByName}
+                  />
+                </div>
               </div>
 
               <div className="quadrant-info quadrant-info--modern">

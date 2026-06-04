@@ -40,10 +40,9 @@
 /* Track wrapper ----------------------------------------------
    Top padding sets the headroom for stacked pennants. Bigger
    pennants + more vertical stack = more top padding required;
-   bumped from 90px (dot-era) to 150px to fit ~5 pennants without
-   clipping the topmost one. Students with very dense milestone
-   columns (e.g. Abdullah, Grade 11) will still fit because flags
-   render via column-reverse with overflow: visible. */
+   150px gives ample room for ~3 pennants (the current max for
+   any hero student in any single grade column) with clearance
+   above. */
 
 .journey-track-wrapper {
   position: relative;
@@ -179,14 +178,24 @@
    bottom of the pole, like a real pennant in light wind. */
 
 /* The flag stack sits above the track, growing upward from the
-   node. bottom is positioned relative to .journey-node so flags
-   stay anchored to their grade regardless of how many there are.
-   gap was tightened to 4px because the bigger pennants already
-   give visual breathing room on their own. */
+   node.
+
+   bottom value: calc(100% + 14px) anchors the bottom of the
+   flag stack 14px ABOVE the top of the .journey-node (which is
+   the top of the dot). Combined with the pole's `bottom: -6px`
+   extension (the pole tip overshoots the stem box by 6px), the
+   pole tip lands ~8px above the node top — leaving clean space
+   between the lowest pennant and the dot's 4px white outline
+   ring and the "GRADE N" label below it.
+
+   Earlier value `calc(100% - 28px)` placed the stack bottom
+   ~28px BELOW the node top, which is roughly where the dot ring
+   and label live; the lowest pennant's pole tip then touched
+   them. Bug fixed by inverting the offset. */
 
 .journey-flags {
   position: absolute;
-  bottom: calc(100% - 28px);  /* anchored just above the dot */
+  bottom: calc(100% + 14px);
   display: flex;
   flex-direction: column-reverse;  /* newest milestone at top */
   align-items: center;
