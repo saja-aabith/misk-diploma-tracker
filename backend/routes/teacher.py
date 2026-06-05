@@ -47,11 +47,12 @@ async def get_submissions_queue(
         JOIN users u ON es.student_id = u.id
         JOIN objectives o ON es.objective_id = o.id
         JOIN quadrants q ON o.quadrant_id = q.id
+        WHERE o.is_active = 1
     """
 
     params = []
     if status != "all":
-        query += " WHERE es.status = ?"
+        query += " AND es.status = ?"
         params.append(status)
 
     query += " ORDER BY es.submission_date DESC"
@@ -268,7 +269,7 @@ async def get_student_report(
         SELECT q.id, q.name, q.color_hex,
                AVG(sop.completion_percentage) as avg_completion
         FROM quadrants q
-        LEFT JOIN objectives o ON q.id = o.quadrant_id
+        LEFT JOIN objectives o ON q.id = o.quadrant_id AND o.is_active = 1
         LEFT JOIN student_objective_progress sop ON o.id = sop.objective_id AND sop.student_id = ?
         GROUP BY q.id
         ORDER BY q.display_order
@@ -288,7 +289,7 @@ async def get_student_report(
                    COALESCE(sop.status, 'not_started') as status
             FROM objectives o
             LEFT JOIN student_objective_progress sop ON o.id = sop.objective_id AND sop.student_id = ?
-            WHERE o.quadrant_id = ?
+            WHERE o.quadrant_id = ? AND o.is_active = 1
         """, (student_id, quad_row['id']))
 
         objectives = []

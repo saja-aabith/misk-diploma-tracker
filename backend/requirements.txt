@@ -4,3 +4,4 @@ pyjwt==2.8.0
 bcrypt==4.1.1
 python-multipart==0.0.6
 pydantic[email]==2.5.0
+reportlab==4.2.5
