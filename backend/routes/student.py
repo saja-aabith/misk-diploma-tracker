@@ -125,6 +125,19 @@ HERO_JOURNEY_MILESTONES = {
         (12, "CMI Level 3 Certified", "Leadership", "#F39C12", 3),
         (12, "Diploma Complete", "Misk Core", "#02664b", 5),
     ],
+    "hussain": [
+        # Year 12 hero (real student, consented). Olympiad milestones are
+        # drawn from his verified certificate dates; medals as confirmed.
+        # The MIT entry is a DEMO SAMPLE — the parenthetical "(sample)" in
+        # the title is mandatory so the timeline can never be misread as a
+        # confirmed real admissions outcome.
+        (10, "IJSO 2023 Thailand — Silver", "Misk Core", "#02664b", 12),
+        (11, "Gulf Physics Olympiad — Silver", "Misk Core", "#02664b", 10),
+        (12, "NBPhO 2025 Tallinn — Silver", "Misk Core", "#02664b", 4),
+        (12, "APhO 2025 Dhahran — Bronze", "Misk Core", "#02664b", 5),
+        (12, "IPhO 2025 France — Bronze", "Misk Core", "#02664b", 7),
+        (12, "MIT Physics Offer (sample)", "Internship", "#9B59B6", 3),
+    ],
 }
 
 
@@ -151,7 +164,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_student)):
                COUNT(o.id) as total_objectives,
                AVG(sop.completion_percentage) as avg_completion
         FROM quadrants q
-        LEFT JOIN objectives o ON q.id = o.quadrant_id
+        LEFT JOIN objectives o ON q.id = o.quadrant_id AND o.is_active = 1
         LEFT JOIN student_objective_progress sop ON o.id = sop.objective_id AND sop.student_id = ?
         GROUP BY q.id
         ORDER BY q.display_order
@@ -169,6 +182,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_student)):
             SELECT COUNT(*) FROM student_objective_progress sop
             JOIN objectives o ON sop.objective_id = o.id
             WHERE o.quadrant_id = ? AND sop.student_id = ? AND sop.status = 'approved'
+              AND o.is_active = 1
         """, (row['id'], student_id))
         completed = cursor.fetchone()[0]
 
@@ -206,7 +220,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_student)):
 async def get_journey(current_user: dict = Depends(get_current_student)):
     """Return the authenticated student's MISK Diploma journey timeline.
 
-    Always returns 6 year-cells (Year 7..12). For the 5 hero students the
+    Always returns 6 year-cells (Year 7..12). For the 6 hero students the
     timeline includes curated milestones from HERO_JOURNEY_MILESTONES; for
     everyone else the year-cells render empty (no milestones) and the
     student's current_year (if set) is highlighted.
@@ -273,11 +287,12 @@ async def get_objectives(
         FROM objectives o
         JOIN quadrants q ON o.quadrant_id = q.id
         LEFT JOIN student_objective_progress sop ON o.id = sop.objective_id AND sop.student_id = ?
+        WHERE o.is_active = 1
     """
 
     params = [student_id]
     if quadrant_id:
-        query += " WHERE o.quadrant_id = ?"
+        query += " AND o.quadrant_id = ?"
         params.append(quadrant_id)
 
     cursor.execute(query, params)
@@ -333,7 +348,7 @@ async def upload_evidence(
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM objectives WHERE id = ?", (objective_id,))
+    cursor.execute("SELECT id FROM objectives WHERE id = ? AND is_active = 1", (objective_id,))
     if cursor.fetchone() is None:
         conn.close()
         raise HTTPException(
