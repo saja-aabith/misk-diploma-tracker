@@ -1,7 +1,16 @@
+import os
+import shutil
 import sqlite3
+import uuid
 from datetime import datetime, timedelta
 import random
 import bcrypt
+
+# UPLOAD_DIR is the single source of truth for where evidence files live
+# (school-controlled storage per policy). seed_hussain_hero() writes real
+# PDFs there so they resolve through the same authenticated files route a
+# normal upload uses. Imported from utils to avoid a second definition.
+from utils import UPLOAD_DIR
 
 DB_NAME = "diploma_tracker.db"
 
@@ -49,77 +58,165 @@ MISK_CORE_OBJECTIVES = [
 ]
 
 # ---------------------------------------------------------------------
-# Chunk 24: hero student profiles for the live demo.
+# Chunk 28: locked 17-objective content model.
 #
-# Each key is the seed-order index of a student (0 = Ahmed Al-Dosari,
-# 1 = Fatima Al-Mansouri, etc., per `student_seed` in seed_data). Each
-# value maps a quadrant NAME (matching `quadrants.name`, including
-# "Misk Core") to a list of completion percentages — one per objective
-# in display order within that quadrant.
+# (quadrant_name, title, description). Count thresholds (5 IGCSEs, 3 IALs,
+# attempt limits) live in the description prose only — there is NO
+# target_count column (agreed Option A). seed_objective_restructure()
+# uses this as the single source of truth: any objective whose
+# (quadrant, title) matches an existing row is refreshed and kept active;
+# any existing objective NOT in this set is soft-deprecated (is_active=0,
+# never deleted). Two titles intentionally match the pre-Chunk-28 rows —
+# "Career Planning" (Internship) and "Project 10" (Misk Core) — so those
+# carry over with their submission history intact.
 #
-# Students with no entry here, and any (student, quadrant) pair that
-# isn't covered, fall back to the historical random distribution. The
-# first 5 students get curated shapes so the demo dashboard tells five
-# visually distinct stories side by side; the remaining 15 students
-# keep the "real school" random feel.
+# Title strings are a locked contract: Hussain's seeded evidence binds to
+# "Competitions and Awards" (olympiads) and "Career Planning" (MIT sample)
+# by exact title. Do not rename without updating seed_hussain_hero().
+# ---------------------------------------------------------------------
+NEW_OBJECTIVES = [
+    # Academic (5)
+    ("Academic", "IELTS",
+        "Achieve and evidence an IELTS result meeting the diploma's English-"
+        "proficiency requirement, including the official test report form."),
+    ("Academic", "IGCSE",
+        "Sit and pass a minimum of 5 IGCSE subjects, evidenced by statements "
+        "of results across the subjects taken."),
+    ("Academic", "IAL",
+        "Sit and pass a minimum of 3 International A Level (IAL) subjects, "
+        "evidenced by statements of results."),
+    ("Academic", "Qudrat",
+        "Sit the Qudrat (General Aptitude) national test. Up to 5 attempts are "
+        "permitted; the best result is recorded as evidence."),
+    ("Academic", "Tahsili",
+        "Sit the Tahsili (Scholastic Achievement) national test. Up to 2 "
+        "attempts are permitted; the best result is recorded as evidence."),
+
+    # Internship (3)
+    ("Internship", "HPQ or EPQ",
+        "Complete either a Higher Project Qualification (HPQ) or an Extended "
+        "Project Qualification (EPQ), submitting the proposal, product and reflection."),
+    ("Internship", "Industry Internship",
+        "Complete an industry internship and submit a structured report "
+        "capturing responsibilities, impact and reflections."),
+    ("Internship", "Career Planning",
+        "Develop and maintain a multi-year career plan with clear milestones, "
+        "target pathways and action steps."),
+
+    # National Identity (3)
+    ("National Identity", "Arabic Language",
+        "Demonstrate growth in Arabic language through coursework, assessments "
+        "and authentic communication tasks."),
+    ("National Identity", "Islamic Studies",
+        "Demonstrate sustained engagement and achievement in Islamic Studies "
+        "through coursework and assessment."),
+    ("National Identity", "Social Studies",
+        "Demonstrate sustained engagement and achievement in Social Studies, "
+        "including Saudi history, geography and civics."),
+
+    # Leadership (1)
+    ("Leadership", "CMI Level 2",
+        "Work towards and complete the CMI (Chartered Management Institute) "
+        "Level 2 qualification, evidencing applied leadership in real projects and roles."),
+
+    # Misk Core (5)
+    ("Misk Core", "CCAP",
+        "Sustained participation in school CCAP strands such as sports teams, "
+        "performing arts, MUN, debate, or service clubs, evidenced through "
+        "teacher confirmation, photos, or reflections."),
+    ("Misk Core", "Project 10",
+        "Completion and presentation of a Project 10 challenge demonstrating "
+        "initiative, planning, and execution across a sustained piece of work."),
+    ("Misk Core", "Trips and Visits",
+        "Engagement with school trips, cultural visits, residentials, or "
+        "external programmes that broaden experience beyond the classroom."),
+    ("Misk Core", "Competitions and Awards",
+        "Participation in inter-school, regional, national, or international "
+        "competitions, with achievements, certificates, or reflections documented."),
+    ("Misk Core", "Community Service Hours",
+        "Accumulate and log community service hours, evidencing sustained "
+        "contribution to the school and the wider community."),
+]
+
+# ---------------------------------------------------------------------
+# Chunk 24/28: hero student progress profiles for the live demo.
 #
-# Note: each list's length must match the real objective count for that
-# quadrant. As of Chunk 24:
-#   Academic 4 | Internship 2 | National Identity 2 | Leadership 2 | Misk Core 4.
-# If an objective is added later, extend the corresponding list in
-# every profile (or accept that the extra objective falls back to
-# random for that profile).
+# Each key is the seed-order index of a student (0 = Ahmed Al-Dosari ...
+# 5 = Hussain Alsaleh), per `student_seed` in seed_data. Each value maps
+# a quadrant NAME to a dict of {objective_title: completion_percentage}.
+#
+# Chunk 28: profiles are keyed by objective TITLE (not list position).
+# Rationale — these profiles are consumed under two different objective
+# orderings: seed_data/seed_misk_core_quadrant seed the legacy objectives,
+# while seed_objective_restructure seeds the new 17. Positional lists made
+# carried-over objectives ("Career Planning", "Project 10") read the wrong
+# index. Title keys are order-independent, so every consumer resolves the
+# intended value and the restructure can stay insert-only (it never
+# overwrites existing progress — important because Hussain is a real
+# student whose reviewed progress must not be reverted on restart).
+#
+# A title present here but not (yet) a real objective is simply ignored.
+# A real objective with no entry for a hero falls back to random (heroes)
+# or, in the restructure, to 0/not_started (everyone). New objective shape:
+#   Academic 5 | Internship 3 | National Identity 3 | Leadership 1 | Misk Core 5.
 # ---------------------------------------------------------------------
 HERO_PROGRESS_PROFILES = {
-    # Profile 0 — Near-empty (Year 7 lookalike).
-    # Quadrant circle barely filled. Demonstrates the "starting from
-    # scratch" view a brand-new student sees on day one.
+    # Profile 0 — Ahmed, near-empty (Year 7). Blank-canvas view.
     0: {
-        "Academic":          [0, 15, 0, 0],
-        "Internship":        [0, 0],
-        "National Identity": [0, 20],
-        "Leadership":        [0, 0],
-        "Misk Core":         [10, 0, 0, 0],
+        "Academic":          {"IELTS": 0, "IGCSE": 10, "IAL": 0, "Qudrat": 0, "Tahsili": 0},
+        "Internship":        {"HPQ or EPQ": 0, "Industry Internship": 0, "Career Planning": 0},
+        "National Identity": {"Arabic Language": 15, "Islamic Studies": 0, "Social Studies": 0},
+        "Leadership":        {"CMI Level 2": 0},
+        "Misk Core":         {"CCAP": 10, "Project 10": 0, "Trips and Visits": 0,
+                              "Competitions and Awards": 0, "Community Service Hours": 0},
     },
-    # Profile 1 — Mid-progress, balanced (Year 9–10 lookalike).
-    # Symmetric ~50% across all quadrants, with one objective per
-    # quadrant at 100% so pillar cards read "1 of N completed".
+    # Profile 1 — Fatima, mid-progress balanced (Year 9).
     1: {
-        "Academic":          [100, 60, 40, 45],
-        "Internship":        [100, 50],
-        "National Identity": [65, 100],
-        "Leadership":        [100, 50],
-        "Misk Core":         [60, 100, 40, 55],
+        "Academic":          {"IELTS": 100, "IGCSE": 60, "IAL": 40, "Qudrat": 45, "Tahsili": 35},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 50, "Career Planning": 30},
+        "National Identity": {"Arabic Language": 65, "Islamic Studies": 100, "Social Studies": 40},
+        "Leadership":        {"CMI Level 2": 50},
+        "Misk Core":         {"CCAP": 60, "Project 10": 100, "Trips and Visits": 40,
+                              "Competitions and Awards": 55, "Community Service Hours": 30},
     },
-    # Profile 2 — Mid-progress, lopsided.
-    # Strong in Academic and National Identity, lagging in Internship
-    # and Leadership. Asymmetric circle — useful demo talking point.
+    # Profile 2 — Mohammed, mid-progress lopsided (Year 10).
+    # Strong Academic + National Identity; lagging Internship + Leadership.
     2: {
-        "Academic":          [85, 100, 75, 100],
-        "Internship":        [25, 20],
-        "National Identity": [100, 90],
-        "Leadership":        [30, 15],
-        "Misk Core":         [80, 100, 65, 90],
+        "Academic":          {"IELTS": 85, "IGCSE": 100, "IAL": 75, "Qudrat": 100, "Tahsili": 80},
+        "Internship":        {"HPQ or EPQ": 25, "Industry Internship": 20, "Career Planning": 15},
+        "National Identity": {"Arabic Language": 100, "Islamic Studies": 90, "Social Studies": 85},
+        "Leadership":        {"CMI Level 2": 20},
+        "Misk Core":         {"CCAP": 80, "Project 10": 100, "Trips and Visits": 65,
+                              "Competitions and Awards": 90, "Community Service Hours": 70},
     },
-    # Profile 3 — Nearly complete (Year 12 lookalike).
-    # Mostly very high, with Leadership as the deliberately lagging
-    # quadrant so the demo can talk about "what's left to finish".
+    # Profile 3 — Sara, nearly complete with Leadership lagging (Year 12).
     3: {
-        "Academic":          [100, 100, 95, 100],
-        "Internship":        [100, 85],
-        "National Identity": [100, 100],
-        "Leadership":        [65, 60],
-        "Misk Core":         [100, 95, 100, 100],
+        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 95, "Qudrat": 100, "Tahsili": 100},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 85, "Career Planning": 90},
+        "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 95},
+        "Leadership":        {"CMI Level 2": 60},
+        "Misk Core":         {"CCAP": 100, "Project 10": 95, "Trips and Visits": 100,
+                              "Competitions and Awards": 100, "Community Service Hours": 90},
     },
-    # Profile 4 — Gold standard.
-    # 100% across every objective. Demonstrates the "fully complete"
-    # visual state of the quadrant circle.
+    # Profile 4 — Abdullah, gold standard (Year 12). 100% everywhere.
     4: {
-        "Academic":          [100, 100, 100, 100],
-        "Internship":        [100, 100],
-        "National Identity": [100, 100],
-        "Leadership":        [100, 100],
-        "Misk Core":         [100, 100, 100, 100],
+        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudrat": 100, "Tahsili": 100},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100, "Career Planning": 100},
+        "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
+        "Leadership":        {"CMI Level 2": 100},
+        "Misk Core":         {"CCAP": 100, "Project 10": 100, "Trips and Visits": 100,
+                              "Competitions and Awards": 100, "Community Service Hours": 100},
+    },
+    # Profile 5 — Hussain Alsaleh, real Year 12 student (consent on file).
+    # 100% across all quadrants; real olympiad evidence + watermarked MIT
+    # sample are attached separately by seed_hussain_hero().
+    5: {
+        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudrat": 100, "Tahsili": 100},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100, "Career Planning": 100},
+        "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
+        "Leadership":        {"CMI Level 2": 100},
+        "Misk Core":         {"CCAP": 100, "Project 10": 100, "Trips and Visits": 100,
+                              "Competitions and Awards": 100, "Community Service Hours": 100},
     },
 }
 
@@ -141,6 +238,7 @@ HERO_STUDENT_YEARS = {
     2: 10,  # Mohammed Al-Harbi  — Mid-lopsided profile
     3: 12,  # Sara Al-Ghamdi     — Nearly-complete profile (Leadership lagging)
     4: 12,  # Abdullah Al-Otaibi — Gold standard profile
+    5: 12,  # Hussain Alsaleh    — Real Year 12 student (olympiad evidence)
 }
 
 
@@ -297,6 +395,9 @@ def init_database():
         "ALTER TABLE evidence_submissions ADD COLUMN file_size_bytes INTEGER",
         "ALTER TABLE evidence_submissions ADD COLUMN mime_type TEXT",
         "ALTER TABLE users ADD COLUMN student_year INTEGER",
+        # Chunk 28: soft-deprecation flag for objectives. Existing rows
+        # default to active; the restructure marks obsolete objectives 0.
+        "ALTER TABLE objectives ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
     ):
         try:
             cursor.execute(ddl)
@@ -350,6 +451,17 @@ def init_database():
     # values that might already be there.
     seed_hero_student_years(conn)
 
+    # Chunk 28: restructure to the locked 17-objective model (soft-deprecate
+    # obsolete objectives, insert new ones, backfill progress). Runs every
+    # startup; idempotent and insert-only for progress. MUST run after
+    # seed_misk_core_quadrant (it needs the Misk Core quadrant to exist).
+    seed_objective_restructure(conn)
+
+    # Chunk 28: seed Hussain's real olympiad evidence + watermarked MIT
+    # sample. Runs AFTER the restructure so the target objectives
+    # ("Competitions and Awards", "Career Planning") are active. Idempotent.
+    seed_hussain_hero(conn)
+
     conn.close()
 
 def hash_password(password: str) -> str:
@@ -382,13 +494,18 @@ def _compute_progress_status(completion: int) -> str:
 
 
 def _resolve_progress(student_seed_index: int, quadrant_name: str,
-                      obj_index_in_quadrant: int):
+                      objective_title: str):
     """Return (completion_percentage, status) for one seeded
     student_objective_progress row.
 
     If student_seed_index has a hero profile AND the profile covers
-    (quadrant_name, obj_index_in_quadrant), the curated value is used.
+    (quadrant_name, objective_title), the curated value is used.
     Otherwise the historical random distribution is consulted.
+
+    Chunk 28: lookup is by objective TITLE (order-independent) so the same
+    profile resolves correctly whether called from seed_data (legacy
+    objective ordering) or seed_misk_core_quadrant. A hero whose profile
+    has no entry for this title falls through to the random distribution.
 
     The random fallback advances Python's global RNG, so the caller
     must seed it with MISK_TRACKER_SEED before the seeding loop for
@@ -397,11 +514,11 @@ def _resolve_progress(student_seed_index: int, quadrant_name: str,
     """
     profile = HERO_PROGRESS_PROFILES.get(student_seed_index)
     if profile is not None:
-        quadrant_completions = profile.get(quadrant_name)
-        if (quadrant_completions is not None
-                and obj_index_in_quadrant < len(quadrant_completions)):
-            completion = quadrant_completions[obj_index_in_quadrant]
-            return completion, _compute_progress_status(completion)
+        quadrant_titles = profile.get(quadrant_name)
+        if quadrant_titles is not None:
+            completion = quadrant_titles.get(objective_title)
+            if completion is not None:
+                return completion, _compute_progress_status(completion)
 
     completion = random.choice([0, 15, 25, 40, 55, 65, 75, 85, 95, 100])
     return completion, _compute_progress_status(completion)
@@ -497,33 +614,31 @@ def seed_misk_core_quadrant(conn):
     misk_core_id = cursor.lastrowid
 
     # 2. Insert the four objectives under the Misk Core quadrant.
-    # Insertion order matches MISK_CORE_OBJECTIVES, which is also the
-    # display order assumed by HERO_PROGRESS_PROFILES[*]["Misk Core"].
-    new_objective_ids = []
+    # We keep (title, id) pairs so progress seeding can resolve hero
+    # values by title (HERO_PROGRESS_PROFILES is title-keyed as of Chunk 28).
+    new_objectives = []  # list of (title, objective_id)
     for title, description in MISK_CORE_OBJECTIVES:
         cursor.execute(
             "INSERT INTO objectives (quadrant_id, title, description, max_points) "
             "VALUES (?, ?, ?, ?)",
             (misk_core_id, title, description, 100),
         )
-        new_objective_ids.append(cursor.lastrowid)
+        new_objectives.append((title, cursor.lastrowid))
 
     # 3. Initialise student_objective_progress for every existing student
-    #    against each of the four new objectives. Hero students (seed
-    #    indices 0..len(HERO_PROGRESS_PROFILES)-1) get the curated shape
-    #    for Misk Core; everyone else falls back to random.
-    #    ORDER BY id ensures the enumerate() index lines up with the
-    #    student_seed insertion order from seed_data (teachers occupy
-    #    ids 1–2, students 3+).
+    #    against each of the four new objectives. Hero students get the
+    #    curated shape (resolved by title); everyone else falls back to
+    #    random. ORDER BY id ensures the enumerate() index lines up with
+    #    the student_seed insertion order from seed_data.
     cursor.execute("SELECT id FROM users WHERE role = 'student' ORDER BY id")
     student_ids = [row[0] for row in cursor.fetchall()]
 
     for student_seed_index, student_id in enumerate(student_ids):
-        for obj_idx_in_quadrant, obj_id in enumerate(new_objective_ids):
+        for obj_title, obj_id in new_objectives:
             completion, status = _resolve_progress(
                 student_seed_index,
                 MISK_CORE_QUADRANT["name"],
-                obj_idx_in_quadrant,
+                obj_title,
             )
             cursor.execute(
                 """
@@ -538,13 +653,13 @@ def seed_misk_core_quadrant(conn):
     conn.commit()
     print(
         f"✓ Misk Core quadrant seeded (id={misk_core_id}, "
-        f"{len(new_objective_ids)} objectives, "
+        f"{len(new_objectives)} objectives, "
         f"{len(student_ids)} students initialised)"
     )
 
 
 def seed_hero_student_years(conn):
-    """Ensure the 5 hero students have a student_year assigned.
+    """Ensure the hero students have a student_year assigned.
 
     Idempotent in two ways:
     1. Only fires UPDATE on rows where student_year IS NULL, so any value
@@ -552,16 +667,19 @@ def seed_hero_student_years(conn):
     2. Safe to call on every startup, including against DBs that predate
        Chunk 25.
 
-    Selection: ORDER BY id LIMIT 5 — matches the seed_index 0..4 used by
-    HERO_PROGRESS_PROFILES (students are inserted in deterministic order
-    in seed_data; teachers occupy ids 1–2).
+    Selection: ORDER BY id LIMIT <hero count> — matches the seed_index
+    0..N-1 used by HERO_PROGRESS_PROFILES / HERO_STUDENT_YEARS (students
+    are inserted in deterministic order in seed_data; teachers occupy
+    ids 1–2). As of Chunk 28 there are 6 heroes (Hussain added at index 5).
     """
     cursor = conn.cursor()
+    hero_count = len(HERO_STUDENT_YEARS)
     cursor.execute(
-        "SELECT id FROM users WHERE role = 'student' ORDER BY id LIMIT 5"
+        "SELECT id FROM users WHERE role = 'student' ORDER BY id LIMIT ?",
+        (hero_count,),
     )
     rows = cursor.fetchall()
-    if len(rows) < 5:
+    if len(rows) < hero_count:
         # No students or partial seed; skip to avoid mis-assigning years.
         return
 
@@ -683,6 +801,7 @@ def seed_data(conn):
         ("mohammed", "Mohammed Al-Harbi"),     # seed_index 2 — hero: Mid-lopsided (Year 10)
         ("sara",     "Sara Al-Ghamdi"),        # seed_index 3 — hero: Nearly complete (Year 12)
         ("abdullah", "Abdullah Al-Otaibi"),    # seed_index 4 — hero: Gold standard (Year 12)
+        ("hussain",  "Hussain Alsaleh"),       # seed_index 5 — hero: real Year 12 student (olympiad evidence)
         ("noura",    "Noura Al-Qahtani"),
         ("khalid",   "Khalid Al-Mutairi"),
         ("lama",     "Lama Al-Shehri"),
@@ -702,11 +821,19 @@ def seed_data(conn):
 
     used_suffixes = set()
     for first_lower, full_name in student_seed:
-        while True:
-            suffix = random.randint(1000, 9999)
-            if suffix not in used_suffixes:
-                used_suffixes.add(suffix)
-                break
+        if first_lower == "hussain":
+            # Real student: fixed, stable credential (hussain2026@...). We do
+            # NOT draw from the RNG here, so every other student's random
+            # suffix is byte-for-byte identical to the pre-Chunk-28 sequence.
+            # (2026 never collides with the seeded draws under this seed, so
+            # registering it below is safe and triggers no redraw.)
+            suffix = 2026
+        else:
+            while True:
+                suffix = random.randint(1000, 9999)
+                if suffix not in used_suffixes:
+                    break
+        used_suffixes.add(suffix)
         identifier = f"{first_lower}{suffix}@miskschools.edu.sa"
         cursor.execute(
             "INSERT INTO users (username, email, password_hash, role, full_name) "
@@ -721,25 +848,23 @@ def seed_data(conn):
     cursor.execute("SELECT id FROM users WHERE role='student' ORDER BY id")
     student_ids = [row[0] for row in cursor.fetchall()]
 
-    # Metadata lookup: objective_id -> (quadrant_name, index_in_quadrant).
-    # Built fresh from the rows we just inserted; sees only the four
-    # quadrants seed_data owns (Misk Core is added later by
-    # seed_misk_core_quadrant, which builds its own equivalent inline).
+    # Metadata lookup: objective_id -> (quadrant_name, title). Built fresh
+    # from the rows we just inserted; sees only the four quadrants seed_data
+    # owns (Misk Core is added later by seed_misk_core_quadrant). Title is
+    # used to resolve hero progress (HERO_PROGRESS_PROFILES is title-keyed
+    # as of Chunk 28), so legacy ordering no longer matters.
     cursor.execute("""
-        SELECT o.id, q.name
+        SELECT o.id, q.name, o.title
         FROM objectives o
         JOIN quadrants q ON q.id = o.quadrant_id
         ORDER BY q.display_order, o.id
     """)
     objective_rows = cursor.fetchall()
 
-    objective_meta = {}            # obj_id -> (quadrant_name, idx_in_quadrant)
-    quadrant_obj_counters = {}     # quadrant_name -> next idx
+    objective_meta = {}            # obj_id -> (quadrant_name, title)
     objective_ids = []
-    for obj_id, qname in objective_rows:
-        idx = quadrant_obj_counters.get(qname, 0)
-        objective_meta[obj_id] = (qname, idx)
-        quadrant_obj_counters[qname] = idx + 1
+    for obj_id, qname, title in objective_rows:
+        objective_meta[obj_id] = (qname, title)
         objective_ids.append(obj_id)
 
     # Seed progress. Hero students get curated shapes via
@@ -748,9 +873,9 @@ def seed_data(conn):
     # inside _compute_progress_status (see its docstring).
     for student_seed_index, student_id in enumerate(student_ids):
         for obj_id in objective_ids:
-            quadrant_name, obj_idx_in_quadrant = objective_meta[obj_id]
+            quadrant_name, objective_title = objective_meta[obj_id]
             completion, status = _resolve_progress(
-                student_seed_index, quadrant_name, obj_idx_in_quadrant
+                student_seed_index, quadrant_name, objective_title
             )
             cursor.execute(
                 """INSERT INTO student_objective_progress
@@ -816,3 +941,309 @@ def seed_data(conn):
 
     conn.commit()
     print(" Seed data created successfully")
+
+
+# ============================================================
+# Chunk 28: objective restructure + Hussain hero evidence
+# ============================================================
+
+def seed_objective_restructure(conn):
+    """Migrate to the locked 17-objective model (NEW_OBJECTIVES).
+
+    Idempotent and additive:
+      - For each NEW_OBJECTIVES entry: if a row with the same
+        (quadrant_id, title) exists, refresh its description and force
+        is_active=1; otherwise INSERT it (is_active=1).
+      - Every objective NOT in the new set is soft-deprecated (is_active=0).
+        Rows are NEVER deleted — historical submissions stay attached and
+        teacher detail views (/submission/{id}) remain reachable by id.
+      - Backfill student_objective_progress for any (student, active
+        objective) pair with no row yet. Hero students (0..5) get their
+        curated title-keyed value; everyone else starts at 0/not_started.
+        INSERT-ONLY: never overwrites an existing progress row, so real
+        reviewed progress (including Hussain's) survives every restart.
+
+    Depends on all quadrants (incl. Misk Core) already existing, so it is
+    called after seed_misk_core_quadrant in init_database.
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, name FROM quadrants")
+    quad_by_name = {row['name']: row['id'] for row in cursor.fetchall()}
+
+    inserted = 0
+    refreshed = 0
+    active_ids = []
+    active_meta = {}  # objective_id -> (quadrant_name, title)
+
+    for quadrant_name, title, description in NEW_OBJECTIVES:
+        qid = quad_by_name.get(quadrant_name)
+        if qid is None:
+            print(f"⚠️  Restructure: quadrant '{quadrant_name}' not found; "
+                  f"skipping objective '{title}'.")
+            continue
+        cursor.execute(
+            "SELECT id FROM objectives WHERE quadrant_id = ? AND title = ?",
+            (qid, title),
+        )
+        existing = cursor.fetchone()
+        if existing is None:
+            cursor.execute(
+                "INSERT INTO objectives (quadrant_id, title, description, "
+                "max_points, is_active) VALUES (?, ?, ?, ?, 1)",
+                (qid, title, description, 100),
+            )
+            obj_id = cursor.lastrowid
+            inserted += 1
+        else:
+            obj_id = existing['id']
+            cursor.execute(
+                "UPDATE objectives SET description = ?, is_active = 1 WHERE id = ?",
+                (description, obj_id),
+            )
+            refreshed += 1
+        active_ids.append(obj_id)
+        active_meta[obj_id] = (quadrant_name, title)
+
+    # Soft-deprecate everything not in the active set.
+    deactivated = 0
+    if active_ids:
+        placeholders = ",".join("?" * len(active_ids))
+        cursor.execute(
+            f"UPDATE objectives SET is_active = 0 WHERE id NOT IN ({placeholders})",
+            active_ids,
+        )
+        deactivated = cursor.rowcount
+
+    # Backfill progress for missing (student, active objective) pairs only.
+    cursor.execute("SELECT id FROM users WHERE role = 'student' ORDER BY id")
+    student_ids = [row['id'] for row in cursor.fetchall()]
+
+    progress_added = 0
+    for seed_index, student_id in enumerate(student_ids):
+        profile = HERO_PROGRESS_PROFILES.get(seed_index)
+        for obj_id in active_ids:
+            cursor.execute(
+                "SELECT 1 FROM student_objective_progress "
+                "WHERE student_id = ? AND objective_id = ?",
+                (student_id, obj_id),
+            )
+            if cursor.fetchone() is not None:
+                continue  # never overwrite existing progress
+            quadrant_name, title = active_meta[obj_id]
+            completion = 0
+            if profile is not None:
+                quadrant_titles = profile.get(quadrant_name)
+                if quadrant_titles is not None:
+                    completion = quadrant_titles.get(title, 0)
+            status = _compute_progress_status(completion)
+            cursor.execute(
+                """INSERT INTO student_objective_progress
+                   (student_id, objective_id, current_points,
+                    completion_percentage, status)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (student_id, obj_id, completion, completion, status),
+            )
+            progress_added += 1
+
+    conn.commit()
+    print(
+        f"✓ Objective restructure complete (inserted={inserted}, "
+        f"refreshed={refreshed}, deactivated={deactivated}, "
+        f"progress_rows_added={progress_added})"
+    )
+
+
+def _ensure_mit_offer_pdf(path):
+    """Generate the DEMO MIT offer sample PDF at `path` if it doesn't exist.
+
+    MANDATORY: this artefact is fictional and must be unmistakably marked as
+    such — two large diagonal watermark lines plus a 'DEMO NOTICE' body
+    paragraph — so it can never be presented as a real admissions outcome.
+    Idempotent: leaves an existing file untouched.
+    """
+    if os.path.exists(path):
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        print("⚠️  reportlab not installed — cannot generate MIT demo sample. "
+              "Run: pip install reportlab==4.2.5")
+        return
+
+    width, height = A4
+    c = canvas.Canvas(path, pagesize=A4)
+
+    # Watermark first (sits beneath the body so text stays legible).
+    c.saveState()
+    c.translate(width / 2.0, height / 2.0)
+    c.rotate(30)
+    c.setFont("Helvetica-Bold", 44)
+    c.setFillGray(0.80)
+    c.drawCentredString(0, 35, "DEMO — SAMPLE DOCUMENT")
+    c.drawCentredString(0, -40, "NOT A REAL OFFER LETTER")
+    c.restoreState()
+
+    # Body text.
+    c.setFillGray(0.0)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(25 * mm, height - 35 * mm, "Massachusetts Institute of Technology")
+    c.setFont("Helvetica", 11)
+    c.drawString(25 * mm, height - 45 * mm, "Department of Physics — Sample Document")
+
+    text = c.beginText(25 * mm, height - 65 * mm)
+    text.setFont("Helvetica", 11)
+    for line in (
+        "DEMO NOTICE",
+        "",
+        "This document is a sample artefact generated by the MISK Diploma",
+        "Tracker for demonstration purposes only. It does not represent a",
+        "real offer of admission from MIT and should not be referenced as",
+        "such in any external context.",
+        "",
+        "Student: Hussain Alsaleh",
+        "Programme: Physics (sample)",
+        "Status: SAMPLE — NOT A REAL OFFER",
+    ):
+        text.textLine(line)
+    c.drawText(text)
+
+    c.showPage()
+    c.save()
+
+
+def seed_hussain_hero(conn):
+    """Attach Hussain Alsaleh's real evidence (Chunk 28).
+
+    Five olympiad certificates bind to Misk Core -> "Competitions and Awards";
+    the watermarked MIT sample binds to Internship -> "Career Planning". Each
+    becomes an approved evidence_submissions row (mirroring /student/upload's
+    columns) with two approving teacher reviews, and the file is copied into
+    UPLOAD_DIR under a fresh UUID so it serves through the normal
+    authenticated files route.
+
+    Sources live in backend/seed_assets/hussain/. The five olympiad PDFs are
+    NOT generated here — if a source is missing we log and skip it (drop the
+    file in later and restart to seed it). The MIT sample is generated on
+    demand by _ensure_mit_offer_pdf (it is fictional, so we own it).
+
+    Idempotent: a file is skipped if Hussain already has a submission with the
+    same original_filename. Safe on every startup.
+    """
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id FROM users WHERE username = ?",
+        ("hussain2026@miskschools.edu.sa",),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return
+    hussain_id = row['id']
+
+    # Real teacher ids (reality over the handover's "3 & 4": teachers are
+    # seeded first, so they are ids 1 & 2; students start at 3). Reviews must
+    # be attributed to actual teachers, since the demo opens this evidence.
+    cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 2")
+    teacher_ids = [r['id'] for r in cursor.fetchall()]
+
+    seed_assets_dir = os.path.join("seed_assets", "hussain")
+    mit_path = os.path.join(seed_assets_dir, "mit_physics_offer_sample.pdf")
+    _ensure_mit_offer_pdf(mit_path)
+
+    # (source_path, original_filename, quadrant_name, objective_title, description)
+    items = [
+        (os.path.join(seed_assets_dir, "ijso_2023_silver.pdf"),
+         "IJSO 2023 Thailand - Silver Medal.pdf",
+         "Misk Core", "Competitions and Awards",
+         "International Junior Science Olympiad 2023 (Thailand) — Silver Medal."),
+        (os.path.join(seed_assets_dir, "gulf_physics_2024_silver.pdf"),
+         "Gulf Physics Olympiad 2024 - Silver.pdf",
+         "Misk Core", "Competitions and Awards",
+         "Gulf Physics Olympiad 2024 — Silver Medal / 3rd place."),
+        (os.path.join(seed_assets_dir, "nbpho_2025_silver.pdf"),
+         "NBPhO 2025 Tallinn - Silver.pdf",
+         "Misk Core", "Competitions and Awards",
+         "Nordic-Baltic Physics Olympiad 2025 (Tallinn) — Silver Medal."),
+        (os.path.join(seed_assets_dir, "apho_2025_bronze.pdf"),
+         "APhO 2025 Dhahran - Bronze.pdf",
+         "Misk Core", "Competitions and Awards",
+         "Asian Physics Olympiad 2025 (Dhahran) — Bronze Medal."),
+        (os.path.join(seed_assets_dir, "ipho_2025_bronze.pdf"),
+         "IPhO 2025 France - Bronze.pdf",
+         "Misk Core", "Competitions and Awards",
+         "International Physics Olympiad 2025 (France) — Bronze Medal."),
+        (mit_path,
+         "MIT Physics Offer (SAMPLE - NOT REAL).pdf",
+         "Internship", "Career Planning",
+         "DEMO SAMPLE — fictional MIT Physics offer artefact. Not a real offer."),
+    ]
+
+    def _objective_id(quadrant_name, title):
+        cursor.execute(
+            """SELECT o.id FROM objectives o
+               JOIN quadrants q ON q.id = o.quadrant_id
+               WHERE q.name = ? AND o.title = ? AND o.is_active = 1""",
+            (quadrant_name, title),
+        )
+        r = cursor.fetchone()
+        return r['id'] if r else None
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    seeded = 0
+    skipped_missing = 0
+    for source_path, original_filename, quadrant_name, title, description in items:
+        cursor.execute(
+            "SELECT 1 FROM evidence_submissions "
+            "WHERE student_id = ? AND original_filename = ?",
+            (hussain_id, original_filename),
+        )
+        if cursor.fetchone() is not None:
+            continue  # already seeded
+
+        if not os.path.isfile(source_path):
+            print(f"⚠️  Hussain seed: source file missing, skipping — {source_path}")
+            skipped_missing += 1
+            continue
+
+        objective_id = _objective_id(quadrant_name, title)
+        if objective_id is None:
+            print(f"⚠️  Hussain seed: objective '{title}' in '{quadrant_name}' "
+                  f"not found/active; skipping {original_filename}.")
+            continue
+
+        ext = os.path.splitext(source_path)[1].lower()
+        stored_filename = f"{uuid.uuid4().hex}{ext}"
+        disk_path = os.path.join(UPLOAD_DIR, stored_filename)
+        shutil.copyfile(source_path, disk_path)
+        file_size_bytes = os.path.getsize(disk_path)
+        mime_type = "application/pdf"
+
+        cursor.execute(
+            """INSERT INTO evidence_submissions
+               (student_id, objective_id, file_path, file_name, description, status,
+                stored_filename, original_filename, file_extension, file_size_bytes, mime_type)
+               VALUES (?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?)""",
+            (hussain_id, objective_id, disk_path, original_filename, description,
+             stored_filename, original_filename, ext, file_size_bytes, mime_type),
+        )
+        submission_id = cursor.lastrowid
+
+        for teacher_id in teacher_ids:
+            cursor.execute(
+                """INSERT INTO evidence_reviews
+                   (submission_id, teacher_id, rating, feedback, decision)
+                   VALUES (?, ?, ?, ?, 'approved')""",
+                (submission_id, teacher_id, 5,
+                 "Verified certificate. Outstanding achievement."),
+            )
+        seeded += 1
+
+    if seeded or skipped_missing:
+        conn.commit()
+        print(f"✓ Hussain hero evidence seeded ({seeded} file(s); "
+              f"{skipped_missing} missing source(s) skipped)")
