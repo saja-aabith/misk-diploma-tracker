@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from database import get_db
+from skills import compute_skills_profile
 from models import (
     ObjectiveReport,
     QuadrantReport,
@@ -859,3 +860,30 @@ async def review_activity(
         "reviewed_at": reviewed_at,
         "review_feedback": payload.feedback,
     }
+
+
+@router.get("/skills-profile/{student_id}")
+async def get_student_skills_profile(
+    student_id: int,
+    current_user: dict = Depends(get_current_teacher),
+):
+    """A student's 16-dimension Misk Skills Profile (teacher view).
+
+    Computed live from approved objective progress (compute-on-read; nothing
+    stored). Teacher-only; 404 if the student does not exist.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT full_name FROM users WHERE id = ? AND role = 'student'",
+        (student_id,),
+    )
+    student = cursor.fetchone()
+    if student is None:
+        conn.close()
+        _err(404, "STUDENT_NOT_FOUND", "Student not found.")
+
+    profile = compute_skills_profile(cursor, student_id)
+    profile["student_name"] = student['full_name']
+    conn.close()
+    return profile

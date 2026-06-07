@@ -4,6 +4,7 @@ import { getUser, logout } from '../utils/auth';
 import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
 import ActivityLogModal from './ActivityLogModal';
+import SkillsRadar from './SkillsRadar';
 import AttachmentLink from './AttachmentLink';
 import JourneyTimeline from './JourneyTimeline';
 import DiplomaIdentityPanel from './DiplomaIdentityPanel';
@@ -118,6 +119,7 @@ function StudentDashboard() {
   const [diploma, setDiploma] = useState(null);
   const [activities, setActivities] = useState([]);
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [skillsProfile, setSkillsProfile] = useState(null);
 
   // Ref to the objectives panel. Used to scroll the panel into view when a
   // quadrant is selected — both from a PillarProgressCard click and from the
@@ -136,6 +138,7 @@ function StudentDashboard() {
     loadSubmissions();
     loadDiploma();
     loadActivities();
+    loadSkills();
     // Misk Core activity log has been retired in favour of structured
     // submissions under the Misk Core quadrant (Chunk 22). The backend
     // /student/activities routes still exist but are no longer consumed
@@ -193,6 +196,15 @@ function StudentDashboard() {
   const handleActivitySuccess = () => {
     setShowActivityModal(false);
     loadActivities();
+  };
+
+  const loadSkills = async () => {
+    try {
+      const response = await student.getSkillsProfile();
+      setSkillsProfile(response.data);
+    } catch (error) {
+      console.error('Failed to load skills profile:', error);
+    }
   };
 
   // Scroll the objectives panel into view. Called after selecting a
@@ -338,6 +350,17 @@ function StudentDashboard() {
             onClick={() => setActiveTab('miskcore')}
           >
             Misk Core
+          </button>
+
+          <button
+            className={`tab ${activeTab === 'skills' ? 'active' : ''}`}
+            style={{
+              ...tabBaseStyle,
+              ...(activeTab === 'skills' ? tabActiveStyle : tabInactiveStyle),
+            }}
+            onClick={() => setActiveTab('skills')}
+          >
+            My Skills
           </button>
         </div>
 
@@ -563,6 +586,40 @@ function StudentDashboard() {
             </div>
           </div>
         )}
+
+        {activeTab === 'skills' && (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>My Skills Profile</h3>
+              {skillsProfile && (
+                <span style={{ color: '#7f8c8d', fontSize: 14 }}>
+                  overall {skillsProfile.overall_average}
+                </span>
+              )}
+            </div>
+            <p style={{ color: '#666', fontSize: 14, marginTop: 6 }}>
+              Your MSHPL skills, drawn from your approved diploma evidence. Dimensions
+              shown as “—” have no evidence yet.
+            </p>
+
+            {!skillsProfile ? (
+              <div style={{ color: '#7f8c8d' }}>Loading…</div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 12 }}>
+                <SkillsRadar
+                  title="How I Think"
+                  accent="#02664b"
+                  data={skillsProfile.dimensions.filter((d) => d.group === 'ACP')}
+                />
+                <SkillsRadar
+                  title="Who I Am"
+                  accent="#0fb989"
+                  data={skillsProfile.dimensions.filter((d) => d.group === 'VAA')}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showUploadModal && (
@@ -572,7 +629,6 @@ function StudentDashboard() {
           onSuccess={handleUploadSuccess}
         />
       )}
-
       {showActivityModal && (
         <ActivityLogModal
           onClose={() => setShowActivityModal(false)}

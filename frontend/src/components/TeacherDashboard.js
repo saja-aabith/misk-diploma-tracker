@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { teacher } from '../api/client';
 import { getUser, logout } from '../utils/auth';
 import AttachmentLink from './AttachmentLink';
+import SkillsRadar from './SkillsRadar';
 
 // Tolerant error-detail extractor: backend returns a string for legacy
 // handlers and a {code, message} dict for migrated handlers (Chunk 7).
@@ -482,6 +483,41 @@ function ActivityReviewCard({ activity, onReviewed }) {
   );
 }
 
+// Skills profile panel for the Student Reports tab (Chunk 33). Fetches the
+// student's computed 16-dimension profile and renders the two radars. Keyed by
+// studentId in the parent so it re-fetches on student change. Read-only.
+function SkillsProfilePanel({ studentId }) {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError('');
+    teacher
+      .getSkillsProfile(studentId)
+      .then((res) => { if (alive) setProfile(res.data); })
+      .catch((err) => { if (alive) setError(extractErrorMessage(err, 'Could not load the skills profile.')); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [studentId]);
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <h4 style={{ margin: 0 }}>Misk Skills Profile</h4>
+      {loading && <div style={{ marginTop: 8, color: '#6d7f7a' }}>Loading…</div>}
+      {error && <div className="error-message" style={{ marginTop: 8 }}>{error}</div>}
+      {profile && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 12 }}>
+          <SkillsRadar title="How I Think" accent="#02664b" data={profile.dimensions.filter((d) => d.group === 'ACP')} />
+          <SkillsRadar title="Who I Am" accent="#0fb989" data={profile.dimensions.filter((d) => d.group === 'VAA')} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('review');
   const [submissions, setSubmissions] = useState([]);
@@ -840,6 +876,7 @@ function TeacherDashboard() {
 
                 <AcademicResultsBlock studentId={selectedStudent} report={studentReport} />
                 <DiplomaAwardPanel key={selectedStudent} studentId={selectedStudent} />
+                <SkillsProfilePanel key={`skills-${selectedStudent}`} studentId={selectedStudent} />
               </div>
             )}
           </>

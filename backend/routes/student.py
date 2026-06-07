@@ -20,6 +20,7 @@ from fastapi import (
 from pydantic import ValidationError
 
 from database import get_db
+from skills import compute_skills_profile
 from models import (
     ObjectiveProgress,
     QuadrantSummary,
@@ -893,3 +894,18 @@ async def get_my_diploma_award(current_user: dict = Depends(get_current_student)
         "eligible_for_diploma": eligible,
         "award": award,
     }
+
+
+@router.get("/skills-profile")
+async def get_my_skills_profile(current_user: dict = Depends(get_current_student)):
+    """The signed-in student's 16-dimension Misk Skills Profile.
+
+    Computed live from approved objective progress (compute-on-read; nothing
+    stored). Returns the 16 dimensions with their ACP/VAA group, 0-100 score,
+    and evidence-confidence counts. Distinct from the diploma award.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    profile = compute_skills_profile(cursor, current_user['user_id'])
+    conn.close()
+    return profile

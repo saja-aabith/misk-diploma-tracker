@@ -1194,6 +1194,27 @@ def seed_hussain_hero(conn):
         return
     hussain_id = row['id']
 
+    # Chunk 33: seed Hussain's five academic results so his skills profile shows
+    # real performance scaling (otherwise approved-but-no-result falls back to a
+    # flat default). Idempotent: only writes where result_value IS NULL, so a
+    # teacher's later entry is never overwritten. Stored in the same format the
+    # result-capture endpoint uses (number string, or JSON grade array).
+    hussain_results = {
+        "IELTS":   ("8.5", 1),
+        "IGCSE":   (json.dumps(["A*", "A*", "A", "A", "B"]), 1),
+        "IAL":     (json.dumps(["A*", "A", "A"]), 1),
+        "Qudurat": ("96.0", 1),
+        "Tahsili": ("92.0", 2),
+    }
+    for r_title, (r_value, r_attempts) in hussain_results.items():
+        cursor.execute(
+            """UPDATE student_objective_progress
+               SET result_value = ?, attempts = ?
+               WHERE student_id = ? AND result_value IS NULL
+                 AND objective_id = (SELECT id FROM objectives WHERE title = ?)""",
+            (r_value, r_attempts, hussain_id, r_title),
+        )
+
     # Real teacher id for review attribution (teachers seed first → ids 1 & 2).
     cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 1")
     t_row = cursor.fetchone()

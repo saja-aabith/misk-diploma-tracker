@@ -67,6 +67,13 @@ export const student = {
   getDiplomaAward: () =>
     apiClient.get('/student/diploma-award'),
 
+  // GET /student/skills-profile — Chunk 33
+  // The signed-in student's 16-dimension Misk Skills Profile, computed live.
+  // Returns { dimensions: [{dimension, group, score, ...}], acp_average,
+  // vaa_average, overall_average }. group is 'ACP' or 'VAA' (the two radars).
+  getSkillsProfile: () =>
+    apiClient.get('/student/skills-profile'),
+
   // ----- Misk Core -----
 
   // GET /student/activity-categories
@@ -227,6 +234,11 @@ export const teacher = {
       decision,
       feedback: feedback ?? null,
     }),
+
+  // GET /teacher/skills-profile/{studentId} — Chunk 33
+  // A student's 16-dimension Misk Skills Profile (teacher view), computed live.
+  getSkillsProfile: (studentId) =>
+    apiClient.get(`/teacher/skills-profile/${studentId}`),
 };
 
 // Build an absolute URL to an authenticated file. NOTE: this URL is NOT
