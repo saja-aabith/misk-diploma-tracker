@@ -317,6 +317,12 @@ class ActivityOut(BaseModel):
     mime_type: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     created_at: datetime
+    # Chunk 32: Misk Core activities are teacher-reviewed.
+    #   status: 'pending_review' | 'approved' | 'rejected'
+    #   review_feedback: optional note from the reviewing teacher (e.g. why
+    #   an activity was rejected) — surfaced to the student.
+    status: str = 'approved'
+    review_feedback: Optional[str] = None
 
 
 class StudentProfileOut(BaseModel):

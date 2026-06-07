@@ -3,6 +3,7 @@ import { student } from '../api/client';
 import { getUser, logout } from '../utils/auth';
 import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
+import ActivityLogModal from './ActivityLogModal';
 import AttachmentLink from './AttachmentLink';
 import JourneyTimeline from './JourneyTimeline';
 import DiplomaIdentityPanel from './DiplomaIdentityPanel';
@@ -65,6 +66,46 @@ const ObjectiveProgressMeter = ({ percent, color }) => {
   );
 };
 
+/**
+ * Formal Diploma status card (Chunk 31) — calm institutional banner at the
+ * top of the My Progress tab. Read-only graduation view: shows the awarded
+ * band once a teacher records one, an "all requirements met" state when the
+ * student is eligible but not yet awarded, or an in-progress state otherwise.
+ * The band is never computed client-side.
+ */
+const DiplomaStatusCard = ({ diploma }) => {
+  const award = diploma?.award || null;
+  const eligible = !!diploma?.eligible_for_diploma;
+
+  let accent;
+  let headline;
+  let sub;
+  if (award) {
+    accent = '#F39C12';
+    headline = `MISK Diploma — ${award.award_level}`;
+    sub = award.selected_at
+      ? `Awarded ${new Date(award.selected_at).toLocaleDateString()}`
+      : 'Awarded';
+  } else if (eligible) {
+    accent = '#2ECC71';
+    headline = 'All requirements met';
+    sub = 'Your formal diploma decision is pending.';
+  } else {
+    accent = 'rgba(255,255,255,0.45)';
+    headline = 'Formal Diploma — In Progress';
+    sub = 'Complete all mandatory objectives to become eligible.';
+  }
+
+  return (
+    <div className="card" style={{ borderLeft: `4px solid ${accent}` }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0 }}>{headline}</h3>
+        <span style={{ color: '#6d7f7a', fontSize: 14 }}>{sub}</span>
+      </div>
+    </div>
+  );
+};
+
 function StudentDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [objectives, setObjectives] = useState([]);
@@ -74,6 +115,9 @@ function StudentDashboard() {
   const [selectedObjective, setSelectedObjective] = useState(null);
   const [activeTab, setActiveTab] = useState('progress');
   const [loading, setLoading] = useState(true);
+  const [diploma, setDiploma] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [showActivityModal, setShowActivityModal] = useState(false);
 
   // Ref to the objectives panel. Used to scroll the panel into view when a
   // quadrant is selected — both from a PillarProgressCard click and from the
@@ -90,6 +134,8 @@ function StudentDashboard() {
     loadDashboard();
     loadObjectives();
     loadSubmissions();
+    loadDiploma();
+    loadActivities();
     // Misk Core activity log has been retired in favour of structured
     // submissions under the Misk Core quadrant (Chunk 22). The backend
     // /student/activities routes still exist but are no longer consumed
@@ -126,6 +172,29 @@ function StudentDashboard() {
     }
   };
 
+  const loadDiploma = async () => {
+    try {
+      const response = await student.getDiplomaAward();
+      setDiploma(response.data);
+    } catch (error) {
+      console.error('Failed to load diploma award:', error);
+    }
+  };
+
+  const loadActivities = async () => {
+    try {
+      const response = await student.getActivities();
+      setActivities(response.data.activities);
+    } catch (error) {
+      console.error('Failed to load activities:', error);
+    }
+  };
+
+  const handleActivitySuccess = () => {
+    setShowActivityModal(false);
+    loadActivities();
+  };
+
   // Scroll the objectives panel into view. Called after selecting a
   // quadrant. Uses a small timeout so React has a chance to render the
   // objectives panel before we measure / scroll. behavior:'smooth' for a
@@ -143,6 +212,13 @@ function StudentDashboard() {
 
   const handleQuadrantClick = useCallback(
     (quadrant) => {
+      // Misk Core is now the open-ended activity area (its objectives were
+      // deactivated in the restructure), so route it to the Misk Core tab
+      // instead of an empty objectives drill-down.
+      if (quadrant?.name === 'Misk Core') {
+        setActiveTab('miskcore');
+        return;
+      }
       setSelectedQuadrant(quadrant);
       loadObjectives(quadrant.id);
       scrollToObjectives();
@@ -193,6 +269,7 @@ function StudentDashboard() {
     loadDashboard();
     if (selectedQuadrant?.id) loadObjectives(selectedQuadrant.id);
     loadSubmissions();
+    loadDiploma();
   };
 
   if (loading) return <div className="loading">Loading...</div>;
@@ -251,10 +328,23 @@ function StudentDashboard() {
           >
             My Submissions
           </button>
+
+          <button
+            className={`tab ${activeTab === 'miskcore' ? 'active' : ''}`}
+            style={{
+              ...tabBaseStyle,
+              ...(activeTab === 'miskcore' ? tabActiveStyle : tabInactiveStyle),
+            }}
+            onClick={() => setActiveTab('miskcore')}
+          >
+            Misk Core
+          </button>
         </div>
 
         {activeTab === 'progress' && (
           <>
+            {diploma && <DiplomaStatusCard diploma={diploma} />}
+
             <div className="card">
               <div className="card-header-inline">
                 <h3>Your Diploma Progress</h3>
@@ -401,6 +491,78 @@ function StudentDashboard() {
             </div>
           </div>
         )}
+
+        {activeTab === 'miskcore' && (
+          <div className="card">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 12,
+              }}
+            >
+              <h3 style={{ margin: 0 }}>Misk Core Activities</h3>
+              <button className="btn-upload" onClick={() => setShowActivityModal(true)}>
+                Log Activity
+              </button>
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.75)', marginTop: 8 }}>
+              Log your wider achievements — competitions, community service, trips,
+              and more. A teacher reviews each one before it's approved.
+            </p>
+
+            <div className="submissions-list">
+              {activities.length === 0 && (
+                <div style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  No activities logged yet.
+                </div>
+              )}
+              {activities.map((activity) => (
+                <div key={activity.id} className="submission-card">
+                  <div className="submission-header">
+                    <div className="submission-title">{activity.title}</div>
+                    <span className={`status-badge status-${activity.status}`}>
+                      {activity.status.replace('_', ' ')}
+                    </span>
+                  </div>
+
+                  <div className="submission-meta">
+                    {activity.category_name}
+                    {activity.activity_date && (
+                      <> • {new Date(activity.activity_date).toLocaleDateString()}</>
+                    )}
+                  </div>
+
+                  {activity.description && (
+                    <div className="submission-meta">{activity.description}</div>
+                  )}
+
+                  {activity.tags && activity.tags.length > 0 && (
+                    <div className="submission-meta">Tags: {activity.tags.join(', ')}</div>
+                  )}
+
+                  {activity.stored_filename && (
+                    <div className="submission-meta">
+                      File: {activity.original_filename}{' '}
+                      <AttachmentLink
+                        storedFilename={activity.stored_filename}
+                        originalFilename={activity.original_filename}
+                      />
+                    </div>
+                  )}
+
+                  {activity.review_feedback && (
+                    <div className="submission-meta">
+                      Teacher feedback: {activity.review_feedback}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {showUploadModal && (
@@ -408,6 +570,13 @@ function StudentDashboard() {
           objective={selectedObjective}
           onClose={() => setShowUploadModal(false)}
           onSuccess={handleUploadSuccess}
+        />
+      )}
+
+      {showActivityModal && (
+        <ActivityLogModal
+          onClose={() => setShowActivityModal(false)}
+          onSuccess={handleActivitySuccess}
         />
       )}
     </div>

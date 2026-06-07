@@ -172,10 +172,13 @@ async def get_dashboard(current_user: dict = Depends(get_current_student)):
 
     quadrants = []
     total_completion = 0
+    scored_quadrants = 0  # quadrants that currently have active objectives
 
     for row in cursor.fetchall():
         completion = row['avg_completion'] if row['avg_completion'] else 0
-        total_completion += completion
+        if row['total_objectives'] and row['total_objectives'] > 0:
+            total_completion += completion
+            scored_quadrants += 1
 
         # Count completed objectives
         cursor.execute("""
@@ -195,11 +198,12 @@ async def get_dashboard(current_user: dict = Depends(get_current_student)):
             total_objectives=row['total_objectives']
         ))
 
-    # Overall completion is the mean across however many quadrants exist.
-    # Previously hardcoded to 4; updated in Chunk 21 when Misk Core was
-    # added as a fifth row in the `quadrants` table.
+    # Overall completion averages only quadrants that currently have active
+    # objectives. Misk Core is an open-ended section with no fixed objectives
+    # in the updated model, so it is excluded from the formal diploma figure
+    # by design (it shapes the separate skills profile, not diploma completion).
     overall_completion = (
-        round(total_completion / len(quadrants), 1) if quadrants else 0
+        round(total_completion / scored_quadrants, 1) if scored_quadrants else 0
     )
 
     conn.close()
@@ -638,8 +642,8 @@ async def create_activity(
         INSERT INTO student_activities
             (student_id, category_id, title, description, activity_date,
              stored_filename, original_filename, file_extension, file_size_bytes,
-             mime_type, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             mime_type, tags, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review')
         """,
         (
             student_id,
@@ -663,7 +667,8 @@ async def create_activity(
         SELECT sa.id, sa.student_id, sa.category_id, ac.name as category_name,
                sa.title, sa.description, sa.activity_date,
                sa.stored_filename, sa.original_filename, sa.file_extension,
-               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at
+               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at,
+               sa.status, sa.review_feedback
         FROM student_activities sa
         JOIN activity_categories ac ON ac.id = sa.category_id
         WHERE sa.id = ?
@@ -694,7 +699,8 @@ async def list_activities(
         SELECT sa.id, sa.student_id, sa.category_id, ac.name as category_name,
                sa.title, sa.description, sa.activity_date,
                sa.stored_filename, sa.original_filename, sa.file_extension,
-               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at
+               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at,
+               sa.status, sa.review_feedback
         FROM student_activities sa
         JOIN activity_categories ac ON ac.id = sa.category_id
         WHERE sa.student_id = ?
@@ -747,6 +753,8 @@ def _row_to_activity_out(row) -> ActivityOut:
         mime_type=row['mime_type'],
         tags=decoded_tags,
         created_at=row['created_at'],
+        status=row['status'],
+        review_feedback=row['review_feedback'],
     )
 
 
@@ -843,3 +851,45 @@ def _build_journey_years(current_year: Optional[int],
             )
         )
     return years
+
+@router.get("/diploma-award")
+async def get_my_diploma_award(current_user: dict = Depends(get_current_student)):
+    """Return the signed-in student's formal diploma award and eligibility.
+
+    Eligibility = every active mandatory objective approved. The award itself
+    (Pass / Merit / Distinction) is teacher-selected and never computed here;
+    this is the student's read-only graduation view.
+    """
+    student_id = current_user['user_id']
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM objectives WHERE is_active = 1")
+    active = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM student_objective_progress sop
+        JOIN objectives o ON o.id = sop.objective_id
+        WHERE sop.student_id = ? AND o.is_active = 1 AND sop.status = 'approved'
+        """,
+        (student_id,),
+    )
+    approved = cursor.fetchone()[0]
+    eligible = active > 0 and approved == active
+
+    cursor.execute(
+        "SELECT award_level, selected_at FROM diploma_awards WHERE student_id = ?",
+        (student_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    award = None
+    if row is not None and row['award_level'] is not None:
+        award = {"award_level": row['award_level'], "selected_at": row['selected_at']}
+
+    return {
+        "student_id": student_id,
+        "eligible_for_diploma": eligible,
+        "award": award,
+    }

@@ -4,9 +4,11 @@
 
 import json
 import sqlite3
-from typing import Optional
+from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from database import get_db
 from models import (
@@ -396,7 +398,8 @@ async def get_student_profile(
         SELECT sa.id, sa.student_id, sa.category_id, ac.name as category_name,
                sa.title, sa.description, sa.activity_date,
                sa.stored_filename, sa.original_filename, sa.file_extension,
-               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at
+               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at,
+               sa.status, sa.review_feedback
         FROM student_activities sa
         JOIN activity_categories ac ON ac.id = sa.category_id
         WHERE sa.student_id = ?
@@ -459,4 +462,400 @@ def _row_to_activity_out(row) -> ActivityOut:
         mime_type=row['mime_type'],
         tags=decoded_tags,
         created_at=row['created_at'],
+        status=row['status'],
+        review_feedback=row['review_feedback'],
     )
+
+# ============================================================
+# Chunk 31: result capture + manual diploma award
+# ============================================================
+
+# Result-based academic objectives — the only mandatory items with numeric
+# performance variation. Titles must match the active objective titles.
+RESULT_BASED_TITLES = {"IELTS", "IGCSE", "IAL", "Qudurat", "Tahsili"}
+
+# Max sit count per objective (Resilience attempt signal); others = 1.
+ATTEMPT_LIMITS = {"Qudurat": 5, "Tahsili": 2}
+
+# Valid grade tokens for grade-list objectives (capture-time validation only;
+# the grade->points conversion + performance ratio live in the skills engine).
+IGCSE_GRADES = {"U", "G", "F", "E", "D", "C", "B", "A", "A*"}
+IAL_GRADES = {"U", "E", "D", "C", "B", "A", "A*"}
+
+# Formal diploma award bands. The system stores the teacher's selection; it
+# never computes or differentiates between these.
+AWARD_LEVELS = {"Pass", "Merit", "Distinction"}
+
+
+class ObjectiveResultIn(BaseModel):
+    student_id: int
+    objective_id: int
+    score: Optional[float] = None        # IELTS / Qudurat / Tahsili
+    grades: Optional[List[str]] = None   # IGCSE / IAL
+    attempts: Optional[int] = 1
+
+
+class DiplomaAwardIn(BaseModel):
+    student_id: int
+    award_level: str
+    notes: Optional[str] = None
+
+
+def _err(status_code: int, code: str, message: str):
+    """Raise an HTTPException in the target error shape."""
+    raise HTTPException(status_code=status_code,
+                        detail={"code": code, "message": message})
+
+
+def _is_eligible(cursor, student_id: int) -> bool:
+    """Eligible when every ACTIVE objective has an approved progress row.
+    Misk Core has no active objectives, so this reduces to the mandatory set."""
+    cursor.execute("SELECT COUNT(*) FROM objectives WHERE is_active = 1")
+    active = cursor.fetchone()[0]
+    if active == 0:
+        return False
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM student_objective_progress sop
+        JOIN objectives o ON o.id = sop.objective_id
+        WHERE sop.student_id = ? AND o.is_active = 1 AND sop.status = 'approved'
+        """,
+        (student_id,),
+    )
+    approved = cursor.fetchone()[0]
+    return approved == active
+
+
+@router.post("/objective-result")
+async def record_objective_result(
+    payload: ObjectiveResultIn,
+    current_user: dict = Depends(get_current_teacher),
+):
+    """Record the official result for a result-based academic objective.
+
+    Stores result_value (a number string for IELTS/Qudurat/Tahsili, or a JSON
+    grade array for IGCSE/IAL) and attempts on the student's progress row.
+    Capture only — performance scaling into skills happens in the skills
+    engine. Teacher-only.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT title FROM objectives WHERE id = ? AND is_active = 1",
+        (payload.objective_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        conn.close()
+        _err(404, "OBJECTIVE_NOT_FOUND", "Objective not found or inactive.")
+    title = row['title']
+    if title not in RESULT_BASED_TITLES:
+        conn.close()
+        _err(400, "OBJECTIVE_NOT_RESULT_BASED",
+             f"'{title}' does not capture a numeric/grade result.")
+
+    cursor.execute(
+        "SELECT id FROM student_objective_progress "
+        "WHERE student_id = ? AND objective_id = ?",
+        (payload.student_id, payload.objective_id),
+    )
+    if cursor.fetchone() is None:
+        conn.close()
+        _err(404, "PROGRESS_ROW_NOT_FOUND",
+             "No progress row for this student and objective.")
+
+    if title in ("IELTS", "Qudurat", "Tahsili"):
+        if payload.score is None:
+            conn.close()
+            _err(400, "RESULT_SCORE_REQUIRED", f"{title} requires a numeric score.")
+        lo, hi = (0.0, 9.0) if title == "IELTS" else (0.0, 100.0)
+        if not (lo <= payload.score <= hi):
+            conn.close()
+            _err(400, "RESULT_OUT_OF_RANGE",
+                 f"{title} score must be between {lo} and {hi}.")
+        result_value = str(payload.score)
+    else:  # IGCSE / IAL
+        if not payload.grades:
+            conn.close()
+            _err(400, "RESULT_GRADES_REQUIRED", f"{title} requires a list of grades.")
+        valid = IGCSE_GRADES if title == "IGCSE" else IAL_GRADES
+        normalised = [g.strip().upper() for g in payload.grades]
+        bad = [g for g in normalised if g not in valid]
+        if bad:
+            conn.close()
+            _err(400, "RESULT_INVALID_GRADE",
+                 f"Invalid {title} grade(s): {', '.join(bad)}.")
+        result_value = json.dumps(normalised)
+
+    max_attempts = ATTEMPT_LIMITS.get(title, 1)
+    attempts = payload.attempts if payload.attempts is not None else 1
+    if not (1 <= attempts <= max_attempts):
+        conn.close()
+        _err(400, "RESULT_ATTEMPTS_INVALID",
+             f"{title} allows 1 to {max_attempts} attempt(s).")
+
+    cursor.execute(
+        "UPDATE student_objective_progress SET result_value = ?, attempts = ? "
+        "WHERE student_id = ? AND objective_id = ?",
+        (result_value, attempts, payload.student_id, payload.objective_id),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "student_id": payload.student_id,
+        "objective_id": payload.objective_id,
+        "title": title,
+        "result_value": result_value,
+        "attempts": attempts,
+    }
+
+
+@router.get("/diploma-award/{student_id}")
+async def get_diploma_award(
+    student_id: int,
+    current_user: dict = Depends(get_current_teacher),
+):
+    """Return the student's diploma award state plus live eligibility (whether
+    every active mandatory objective is approved). Teacher-only."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id, full_name FROM users WHERE id = ? AND role = 'student'",
+        (student_id,),
+    )
+    student = cursor.fetchone()
+    if student is None:
+        conn.close()
+        _err(404, "STUDENT_NOT_FOUND", "Student not found.")
+
+    eligible = _is_eligible(cursor, student_id)
+
+    cursor.execute(
+        """
+        SELECT da.award_level, da.selected_by, da.selected_at, da.notes,
+               u.full_name AS selected_by_name
+        FROM diploma_awards da
+        LEFT JOIN users u ON u.id = da.selected_by
+        WHERE da.student_id = ?
+        """,
+        (student_id,),
+    )
+    award_row = cursor.fetchone()
+    conn.close()
+
+    award = None
+    if award_row is not None and award_row['award_level'] is not None:
+        award = {
+            "award_level": award_row['award_level'],
+            "selected_by": award_row['selected_by'],
+            "selected_by_name": award_row['selected_by_name'],
+            "selected_at": award_row['selected_at'],
+            "notes": award_row['notes'],
+        }
+
+    return {
+        "student_id": student_id,
+        "student_name": student['full_name'],
+        "eligible_for_diploma": eligible,
+        "award": award,
+    }
+
+
+@router.post("/diploma-award")
+async def set_diploma_award(
+    payload: DiplomaAwardIn,
+    current_user: dict = Depends(get_current_teacher),
+):
+    """Manually select the formal diploma award for an eligible student.
+
+    The system does not compute Pass/Merit/Distinction; it records the
+    teacher's holistic selection plus who selected it and when. Requires the
+    student to be eligible (all active mandatory objectives approved).
+    Teacher-only.
+    """
+    if payload.award_level not in AWARD_LEVELS:
+        _err(400, "AWARD_LEVEL_INVALID",
+             f"award_level must be one of: {', '.join(sorted(AWARD_LEVELS))}.")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id FROM users WHERE id = ? AND role = 'student'",
+        (payload.student_id,),
+    )
+    if cursor.fetchone() is None:
+        conn.close()
+        _err(404, "STUDENT_NOT_FOUND", "Student not found.")
+
+    if not _is_eligible(cursor, payload.student_id):
+        conn.close()
+        _err(409, "DIPLOMA_NOT_ELIGIBLE",
+             "Student is not yet eligible: all mandatory objectives must be approved.")
+
+    teacher_id = current_user['user_id']
+    selected_at = datetime.utcnow().isoformat()
+
+    cursor.execute("SELECT id FROM diploma_awards WHERE student_id = ?",
+                   (payload.student_id,))
+    existing = cursor.fetchone()
+    if existing is None:
+        cursor.execute(
+            "INSERT INTO diploma_awards "
+            "(student_id, eligible_for_diploma, award_level, selected_by, selected_at, notes) "
+            "VALUES (?, 1, ?, ?, ?, ?)",
+            (payload.student_id, payload.award_level, teacher_id, selected_at, payload.notes),
+        )
+    else:
+        cursor.execute(
+            "UPDATE diploma_awards SET eligible_for_diploma = 1, award_level = ?, "
+            "selected_by = ?, selected_at = ?, notes = ? WHERE student_id = ?",
+            (payload.award_level, teacher_id, selected_at, payload.notes, payload.student_id),
+        )
+    conn.commit()
+    conn.close()
+
+    return {
+        "student_id": payload.student_id,
+        "eligible_for_diploma": True,
+        "award_level": payload.award_level,
+        "selected_by": teacher_id,
+        "selected_at": selected_at,
+        "notes": payload.notes,
+    }
+
+
+# ============================================================
+# Chunk 32: Misk Core activity review (teacher queue + decision)
+# ============================================================
+
+class ActivityReviewIn(BaseModel):
+    activity_id: int
+    decision: str              # 'approved' | 'rejected'
+    feedback: Optional[str] = None
+
+
+ACTIVITY_STATUSES = {"pending_review", "approved", "rejected"}
+
+
+def _activity_review_row(row) -> dict:
+    """Shape a student_activities row (joined with category + student) for the
+    teacher review queue. Decodes the tags JSON permissively so a legacy NULL
+    or malformed value doesn't 500 the queue."""
+    raw_tags = row['tags']
+    if not raw_tags:
+        decoded_tags = []
+    else:
+        try:
+            decoded = json.loads(raw_tags)
+            decoded_tags = decoded if isinstance(decoded, list) else []
+        except json.JSONDecodeError:
+            decoded_tags = []
+    return {
+        "id": row['id'],
+        "student_id": row['student_id'],
+        "student_name": row['student_name'],
+        "category_id": row['category_id'],
+        "category_name": row['category_name'],
+        "title": row['title'],
+        "description": row['description'],
+        "activity_date": row['activity_date'],
+        "stored_filename": row['stored_filename'],
+        "original_filename": row['original_filename'],
+        "file_extension": row['file_extension'],
+        "file_size_bytes": row['file_size_bytes'],
+        "mime_type": row['mime_type'],
+        "tags": decoded_tags,
+        "created_at": row['created_at'],
+        "status": row['status'],
+        "review_feedback": row['review_feedback'],
+        "reviewed_by": row['reviewed_by'],
+        "reviewed_at": row['reviewed_at'],
+    }
+
+
+@router.get("/activities")
+async def list_activities_for_review(
+    status: str = Query("pending_review"),
+    current_user: dict = Depends(get_current_teacher),
+):
+    """Misk Core activity review queue. `status` filters by activity status
+    (pending_review | approved | rejected) or 'all'. Oldest-first (FIFO).
+    Teacher-only."""
+    if status != "all" and status not in ACTIVITY_STATUSES:
+        _err(400, "ACTIVITY_STATUS_INVALID",
+             f"status must be 'all' or one of: {', '.join(sorted(ACTIVITY_STATUSES))}.")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    query = """
+        SELECT sa.id, sa.student_id, u.full_name AS student_name,
+               sa.category_id, ac.name AS category_name,
+               sa.title, sa.description, sa.activity_date,
+               sa.stored_filename, sa.original_filename, sa.file_extension,
+               sa.file_size_bytes, sa.mime_type, sa.tags, sa.created_at,
+               sa.status, sa.review_feedback, sa.reviewed_by, sa.reviewed_at
+        FROM student_activities sa
+        JOIN activity_categories ac ON ac.id = sa.category_id
+        JOIN users u ON u.id = sa.student_id
+    """
+    params = []
+    if status != "all":
+        query += " WHERE sa.status = ?"
+        params.append(status)
+    query += " ORDER BY sa.created_at ASC, sa.id ASC"
+
+    cursor.execute(query, params)
+    activities = [_activity_review_row(r) for r in cursor.fetchall()]
+    conn.close()
+    return {"activities": activities}
+
+
+@router.post("/activity-review")
+async def review_activity(
+    payload: ActivityReviewIn,
+    current_user: dict = Depends(get_current_teacher),
+):
+    """Approve or reject a Misk Core activity. Records the decision, reviewing
+    teacher, timestamp, and optional feedback. Teacher-only.
+
+    State: pending_review -> approved | rejected. A teacher may also correct a
+    prior decision (e.g. approved -> rejected); the latest decision wins.
+    """
+    if payload.decision not in ("approved", "rejected"):
+        _err(400, "ACTIVITY_DECISION_INVALID",
+             "decision must be 'approved' or 'rejected'.")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM student_activities WHERE id = ?",
+                   (payload.activity_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        _err(404, "ACTIVITY_NOT_FOUND", "Activity not found.")
+
+    teacher_id = current_user['user_id']
+    reviewed_at = datetime.utcnow().isoformat()
+    cursor.execute(
+        "UPDATE student_activities SET status = ?, reviewed_by = ?, "
+        "reviewed_at = ?, review_feedback = ? WHERE id = ?",
+        (payload.decision, teacher_id, reviewed_at, payload.feedback,
+         payload.activity_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # NOTE (Step 5, post sign-off): Gemini skill extraction for APPROVED Misk
+    # Core activities hooks in here. Sending student activity text off-site is
+    # the same class of decision as the storage policy and is gated on written
+    # approval — so for now approval ONLY records the decision; no AI call.
+
+    return {
+        "activity_id": payload.activity_id,
+        "status": payload.decision,
+        "reviewed_by": teacher_id,
+        "reviewed_at": reviewed_at,
+        "review_feedback": payload.feedback,
+    }

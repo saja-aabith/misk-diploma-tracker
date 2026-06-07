@@ -58,6 +58,15 @@ export const student = {
   getJourney: () =>
     apiClient.get('/student/journey'),
 
+  // GET /student/diploma-award — Chunk 31
+  // Read-only graduation view for the signed-in student. Returns
+  // { student_id, eligible_for_diploma, award } where award is null
+  // until a teacher records one, otherwise { award_level, selected_at }.
+  // Eligibility = every active mandatory objective approved; the award
+  // band (Pass/Merit/Distinction) is teacher-selected, never computed.
+  getDiplomaAward: () =>
+    apiClient.get('/student/diploma-award'),
+
   // ----- Misk Core -----
 
   // GET /student/activity-categories
@@ -165,6 +174,59 @@ export const teacher = {
     }
     return apiClient.get(`/teacher/student-profile/${studentId}`, { params });
   },
+
+  // POST /teacher/objective-result — Chunk 31
+  // Record an exam outcome for a result-based academic objective
+  // (IELTS / IGCSE / IAL / Qudurat / Tahsili). Score-based titles send
+  // `score`; grade-based titles (IGCSE/IAL) send `grades` (string[]).
+  // `attempts` applies to Qudurat (≤5) / Tahsili (≤2); defaults to 1.
+  // The backend validates title↔payload and stores result_value +
+  // attempts on the student's progress row; it does NOT change the
+  // objective's approval status.
+  recordObjectiveResult: ({ studentId, objectiveId, score, grades, attempts }) =>
+    apiClient.post('/teacher/objective-result', {
+      student_id: studentId,
+      objective_id: objectiveId,
+      score: score ?? null,
+      grades: grades ?? null,
+      attempts: attempts ?? 1,
+    }),
+
+  // GET /teacher/diploma-award/{studentId} — Chunk 31
+  // Returns { student_id, student_name, eligible_for_diploma, award }
+  // where award is null until recorded, else
+  // { award_level, selected_by, selected_by_name, selected_at, notes }.
+  getDiplomaAward: (studentId) =>
+    apiClient.get(`/teacher/diploma-award/${studentId}`),
+
+  // POST /teacher/diploma-award — Chunk 31
+  // Manually record the formal diploma band for an eligible student.
+  // 409 DIPLOMA_NOT_ELIGIBLE if not every active mandatory objective is
+  // approved. award_level must be one of Pass / Merit / Distinction.
+  setDiplomaAward: ({ studentId, awardLevel, notes }) =>
+    apiClient.post('/teacher/diploma-award', {
+      student_id: studentId,
+      award_level: awardLevel,
+      notes: notes ?? null,
+    }),
+
+  // GET /teacher/activities — Chunk 32
+  // Misk Core activity review queue. `status` is one of
+  // pending_review | approved | rejected | all (default pending_review).
+  // Returns { activities: [...] } with each item carrying student_name,
+  // category_name, the file descriptor, tags, status and review fields.
+  getActivitiesForReview: (status = 'pending_review') =>
+    apiClient.get('/teacher/activities', { params: { status } }),
+
+  // POST /teacher/activity-review — Chunk 32
+  // Approve or reject a Misk Core activity. decision is 'approved' or
+  // 'rejected'; feedback is optional and surfaced back to the student.
+  reviewActivity: ({ activityId, decision, feedback }) =>
+    apiClient.post('/teacher/activity-review', {
+      activity_id: activityId,
+      decision,
+      feedback: feedback ?? null,
+    }),
 };
 
 // Build an absolute URL to an authenticated file. NOTE: this URL is NOT

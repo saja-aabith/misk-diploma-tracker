@@ -2,6 +2,7 @@ import os
 import shutil
 import sqlite3
 import uuid
+import json
 from datetime import datetime, timedelta
 import random
 import bcrypt
@@ -58,21 +59,25 @@ MISK_CORE_OBJECTIVES = [
 ]
 
 # ---------------------------------------------------------------------
-# Chunk 28: locked 17-objective content model.
+# Chunk 30: mandatory diploma objective model (per misk_skills_framework
+# _updated.md §3, now the structural source of truth).
 #
 # (quadrant_name, title, description). Count thresholds (5 IGCSEs, 3 IALs,
 # attempt limits) live in the description prose only — there is NO
-# target_count column (agreed Option A). seed_objective_restructure()
-# uses this as the single source of truth: any objective whose
-# (quadrant, title) matches an existing row is refreshed and kept active;
-# any existing objective NOT in this set is soft-deprecated (is_active=0,
-# never deleted). Two titles intentionally match the pre-Chunk-28 rows —
-# "Career Planning" (Internship) and "Project 10" (Misk Core) — so those
-# carry over with their submission history intact.
+# target_count column. seed_objective_restructure() uses this as the single
+# source of truth: any objective whose (quadrant, title) matches an existing
+# row is refreshed and kept active; any existing objective NOT in this set is
+# soft-deprecated (is_active=0, never deleted).
 #
-# Title strings are a locked contract: Hussain's seeded evidence binds to
-# "Competitions and Awards" (olympiads) and "Career Planning" (MIT sample)
-# by exact title. Do not rename without updating seed_hussain_hero().
+# These are the MANDATORY diploma requirements only (the "common floor").
+# Misk Core is deliberately ABSENT here: per the updated model it is an
+# open-ended section of teacher-approved activities (not fixed objectives)
+# that feeds the separate skills profile. Its activity model is built in a
+# later chunk; for now the Misk Core quadrant simply carries no active
+# objectives. Career Planning likewise moves out of Internship to become a
+# Misk Core activity example, so it is not listed here either.
+#
+# Spelling note: "Qudurat" per the .md (supersedes the earlier "Qudrat").
 # ---------------------------------------------------------------------
 NEW_OBJECTIVES = [
     # Academic (5)
@@ -85,23 +90,20 @@ NEW_OBJECTIVES = [
     ("Academic", "IAL",
         "Sit and pass a minimum of 3 International A Level (IAL) subjects, "
         "evidenced by statements of results."),
-    ("Academic", "Qudrat",
-        "Sit the Qudrat (General Aptitude) national test. Up to 5 attempts are "
+    ("Academic", "Qudurat",
+        "Sit the Qudurat (General Aptitude) national test. Up to 5 attempts are "
         "permitted; the best result is recorded as evidence."),
     ("Academic", "Tahsili",
         "Sit the Tahsili (Scholastic Achievement) national test. Up to 2 "
         "attempts are permitted; the best result is recorded as evidence."),
 
-    # Internship (3)
+    # Internship (2)
     ("Internship", "HPQ or EPQ",
         "Complete either a Higher Project Qualification (HPQ) or an Extended "
         "Project Qualification (EPQ), submitting the proposal, product and reflection."),
     ("Internship", "Industry Internship",
         "Complete an industry internship and submit a structured report "
         "capturing responsibilities, impact and reflections."),
-    ("Internship", "Career Planning",
-        "Develop and maintain a multi-year career plan with clear milestones, "
-        "target pathways and action steps."),
 
     # National Identity (3)
     ("National Identity", "Arabic Language",
@@ -118,24 +120,6 @@ NEW_OBJECTIVES = [
     ("Leadership", "CMI Level 2",
         "Work towards and complete the CMI (Chartered Management Institute) "
         "Level 2 qualification, evidencing applied leadership in real projects and roles."),
-
-    # Misk Core (5)
-    ("Misk Core", "CCAP",
-        "Sustained participation in school CCAP strands such as sports teams, "
-        "performing arts, MUN, debate, or service clubs, evidenced through "
-        "teacher confirmation, photos, or reflections."),
-    ("Misk Core", "Project 10",
-        "Completion and presentation of a Project 10 challenge demonstrating "
-        "initiative, planning, and execution across a sustained piece of work."),
-    ("Misk Core", "Trips and Visits",
-        "Engagement with school trips, cultural visits, residentials, or "
-        "external programmes that broaden experience beyond the classroom."),
-    ("Misk Core", "Competitions and Awards",
-        "Participation in inter-school, regional, national, or international "
-        "competitions, with achievements, certificates, or reflections documented."),
-    ("Misk Core", "Community Service Hours",
-        "Accumulate and log community service hours, evidencing sustained "
-        "contribution to the school and the wider community."),
 ]
 
 # ---------------------------------------------------------------------
@@ -145,78 +129,62 @@ NEW_OBJECTIVES = [
 # 5 = Hussain Alsaleh), per `student_seed` in seed_data. Each value maps
 # a quadrant NAME to a dict of {objective_title: completion_percentage}.
 #
-# Chunk 28: profiles are keyed by objective TITLE (not list position).
-# Rationale — these profiles are consumed under two different objective
-# orderings: seed_data/seed_misk_core_quadrant seed the legacy objectives,
-# while seed_objective_restructure seeds the new 17. Positional lists made
-# carried-over objectives ("Career Planning", "Project 10") read the wrong
-# index. Title keys are order-independent, so every consumer resolves the
-# intended value and the restructure can stay insert-only (it never
-# overwrites existing progress — important because Hussain is a real
-# student whose reviewed progress must not be reverted on restart).
+# Profiles are keyed by objective TITLE (order-independent) so the same
+# profile resolves correctly whether read by seed_data (legacy objectives)
+# or seed_objective_restructure (the current model). A title present here
+# but not an active objective is simply ignored; a real objective with no
+# entry for a hero falls back to random (heroes) or 0/not_started (restructure).
 #
-# A title present here but not (yet) a real objective is simply ignored.
-# A real objective with no entry for a hero falls back to random (heroes)
-# or, in the restructure, to 0/not_started (everyone). New objective shape:
-#   Academic 5 | Internship 3 | National Identity 3 | Leadership 1 | Misk Core 5.
+# Chunk 30: these now cover only the MANDATORY objectives (Misk Core has no
+# fixed objectives in the updated model). Shape:
+#   Academic 5 | Internship 2 | National Identity 3 | Leadership 1.
 # ---------------------------------------------------------------------
 HERO_PROGRESS_PROFILES = {
     # Profile 0 — Ahmed, near-empty (Year 7). Blank-canvas view.
     0: {
-        "Academic":          {"IELTS": 0, "IGCSE": 10, "IAL": 0, "Qudrat": 0, "Tahsili": 0},
-        "Internship":        {"HPQ or EPQ": 0, "Industry Internship": 0, "Career Planning": 0},
+        "Academic":          {"IELTS": 0, "IGCSE": 10, "IAL": 0, "Qudurat": 0, "Tahsili": 0},
+        "Internship":        {"HPQ or EPQ": 0, "Industry Internship": 0},
         "National Identity": {"Arabic Language": 15, "Islamic Studies": 0, "Social Studies": 0},
         "Leadership":        {"CMI Level 2": 0},
-        "Misk Core":         {"CCAP": 10, "Project 10": 0, "Trips and Visits": 0,
-                              "Competitions and Awards": 0, "Community Service Hours": 0},
     },
     # Profile 1 — Fatima, mid-progress balanced (Year 9).
     1: {
-        "Academic":          {"IELTS": 100, "IGCSE": 60, "IAL": 40, "Qudrat": 45, "Tahsili": 35},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 50, "Career Planning": 30},
+        "Academic":          {"IELTS": 100, "IGCSE": 60, "IAL": 40, "Qudurat": 45, "Tahsili": 35},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 50},
         "National Identity": {"Arabic Language": 65, "Islamic Studies": 100, "Social Studies": 40},
         "Leadership":        {"CMI Level 2": 50},
-        "Misk Core":         {"CCAP": 60, "Project 10": 100, "Trips and Visits": 40,
-                              "Competitions and Awards": 55, "Community Service Hours": 30},
     },
     # Profile 2 — Mohammed, mid-progress lopsided (Year 10).
     # Strong Academic + National Identity; lagging Internship + Leadership.
     2: {
-        "Academic":          {"IELTS": 85, "IGCSE": 100, "IAL": 75, "Qudrat": 100, "Tahsili": 80},
-        "Internship":        {"HPQ or EPQ": 25, "Industry Internship": 20, "Career Planning": 15},
+        "Academic":          {"IELTS": 85, "IGCSE": 100, "IAL": 75, "Qudurat": 100, "Tahsili": 80},
+        "Internship":        {"HPQ or EPQ": 25, "Industry Internship": 20},
         "National Identity": {"Arabic Language": 100, "Islamic Studies": 90, "Social Studies": 85},
         "Leadership":        {"CMI Level 2": 20},
-        "Misk Core":         {"CCAP": 80, "Project 10": 100, "Trips and Visits": 65,
-                              "Competitions and Awards": 90, "Community Service Hours": 70},
     },
     # Profile 3 — Sara, nearly complete with Leadership lagging (Year 12).
     3: {
-        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 95, "Qudrat": 100, "Tahsili": 100},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 85, "Career Planning": 90},
+        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 95, "Qudurat": 100, "Tahsili": 100},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 85},
         "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 95},
         "Leadership":        {"CMI Level 2": 60},
-        "Misk Core":         {"CCAP": 100, "Project 10": 95, "Trips and Visits": 100,
-                              "Competitions and Awards": 100, "Community Service Hours": 90},
     },
     # Profile 4 — Abdullah, gold standard (Year 12). 100% everywhere.
     4: {
-        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudrat": 100, "Tahsili": 100},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100, "Career Planning": 100},
+        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudurat": 100, "Tahsili": 100},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100},
         "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
         "Leadership":        {"CMI Level 2": 100},
-        "Misk Core":         {"CCAP": 100, "Project 10": 100, "Trips and Visits": 100,
-                              "Competitions and Awards": 100, "Community Service Hours": 100},
     },
     # Profile 5 — Hussain Alsaleh, real Year 12 student (consent on file).
-    # 100% across all quadrants; real olympiad evidence + watermarked MIT
-    # sample are attached separately by seed_hussain_hero().
+    # 100% across the mandatory objectives. His olympiad evidence + MIT sample
+    # are Misk Core / activity material and are re-homed when the Misk Core
+    # activity model is built (they have no fixed-objective home now).
     5: {
-        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudrat": 100, "Tahsili": 100},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100, "Career Planning": 100},
+        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudurat": 100, "Tahsili": 100},
+        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100},
         "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
         "Leadership":        {"CMI Level 2": 100},
-        "Misk Core":         {"CCAP": 100, "Project 10": 100, "Trips and Visits": 100,
-                              "Competitions and Awards": 100, "Community Service Hours": 100},
     },
 }
 
@@ -384,6 +352,27 @@ def init_database():
     """)
 
     # ---------------------------------------------------------------
+    # Chunk 31: diploma_awards — the manually selected formal award.
+    # One row per student (UNIQUE student_id). The system NEVER computes
+    # Pass/Merit/Distinction; a teacher selects it at the end of the journey
+    # once the student is eligible (all mandatory objectives approved). We
+    # store who selected it and when for auditability.
+    # ---------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS diploma_awards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL UNIQUE,
+            eligible_for_diploma INTEGER NOT NULL DEFAULT 0,
+            award_level TEXT,
+            selected_by INTEGER,
+            selected_at TIMESTAMP,
+            notes TEXT,
+            FOREIGN KEY (student_id) REFERENCES users(id),
+            FOREIGN KEY (selected_by) REFERENCES users(id)
+        )
+    """)
+
+    # ---------------------------------------------------------------
     # Idempotent ALTER TABLE migrations
     # ---------------------------------------------------------------
     # evidence_submissions: file metadata columns from earlier chunks.
@@ -398,6 +387,21 @@ def init_database():
         # Chunk 28: soft-deprecation flag for objectives. Existing rows
         # default to active; the restructure marks obsolete objectives 0.
         "ALTER TABLE objectives ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+        # Chunk 31: result capture for the 5 result-based academic objectives.
+        # result_value holds a number string (IELTS/Qudurat/Tahsili) or a JSON
+        # array of grade tokens (IGCSE/IAL); attempts is the sit count
+        # (Qudurat/Tahsili Resilience signal). Both NULL for non-result rows.
+        "ALTER TABLE student_objective_progress ADD COLUMN result_value TEXT",
+        "ALTER TABLE student_objective_progress ADD COLUMN attempts INTEGER",
+        # Chunk 32: Misk Core activity approval workflow. status defaults to
+        # 'approved' so any pre-existing (legacy, instantly-live) activities are
+        # grandfathered in; the POST /student/activities handler explicitly
+        # writes 'pending_review' for all NEW activities. reviewed_by/at/feedback
+        # capture the teacher decision.
+        "ALTER TABLE student_activities ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'",
+        "ALTER TABLE student_activities ADD COLUMN reviewed_by INTEGER",
+        "ALTER TABLE student_activities ADD COLUMN reviewed_at TIMESTAMP",
+        "ALTER TABLE student_activities ADD COLUMN review_feedback TEXT",
     ):
         try:
             cursor.execute(ddl)
@@ -440,6 +444,11 @@ def init_database():
     if cursor.fetchone()[0] == 0:
         seed_activity_categories(conn)
 
+    # Chunk 32: converge the activity taxonomy to the Misk Core types every
+    # startup (soft-deprecates any legacy categories on existing DBs). Runs
+    # before seed_hussain_hero, which binds his evidence to these categories.
+    reconcile_misk_core_activity_categories(conn)
+
     # Chunk 21: ensure Misk Core exists as the fifth quadrant. Internally
     # gated on `name='Misk Core'` so existing DBs pick it up on next
     # startup without requiring a full reseed.
@@ -457,9 +466,10 @@ def init_database():
     # seed_misk_core_quadrant (it needs the Misk Core quadrant to exist).
     seed_objective_restructure(conn)
 
-    # Chunk 28: seed Hussain's real olympiad evidence + watermarked MIT
-    # sample. Runs AFTER the restructure so the target objectives
-    # ("Competitions and Awards", "Career Planning") are active. Idempotent.
+    # Chunk 32: Hussain's hero evidence is now seeded as APPROVED Misk Core
+    # ACTIVITIES — five olympiad certificates under "Competitions and Awards"
+    # and the watermarked MIT sample under "Career Planning". Re-enabled after
+    # the activity model + categories exist. Idempotent (gated per file).
     seed_hussain_hero(conn)
 
     conn.close()
@@ -525,49 +535,89 @@ def _resolve_progress(student_seed_index: int, quadrant_name: str,
 
 
 def seed_activity_categories(conn):
-    """Seed the Misk Core activity taxonomy.
+    """Seed the Misk Core activity taxonomy (Chunk 32).
 
-    NOTE (Chunk 21): the activity-category taxonomy is now legacy. It
-    backs the free-form activity log that pre-dated the Option C decision
-    to convert Misk Core to a structured submission flow. Categories stay
-    seeded so the legacy /student/activities routes don't 500 during
-    the transition; Chunk 22 stops using them.
+    The Misk Core area is open-ended: students log activities against one of
+    the Misk Core activity TYPES below. This replaces the original free-form
+    taxonomy (Volunteering, Cultural Heritage, …) which is now soft-deprecated
+    by reconcile_misk_core_activity_categories on every startup.
 
-    Idempotent — only invoked when activity_categories is empty.
+    Idempotent — only invoked when activity_categories is empty (fresh DB).
+    Existing DBs converge via the reconcile function instead.
     """
     cursor = conn.cursor()
-    categories = [
-        ("Volunteering & Community Service",
-         "Activities serving the community, charitable work, and giving back.",
-         1),
-        ("Cultural Heritage",
-         "Saudi heritage, traditions, museums, and cultural exploration.",
-         2),
-        ("Sports & Athletics",
-         "Sports teams, athletic competitions, fitness events, and physical activity.",
-         3),
-        ("Arts & Creative Expression",
-         "Visual art, music, theatre, creative writing, and design.",
-         4),
-        ("Entrepreneurship & Innovation",
-         "Business projects, startups, hackathons, and innovation challenges.",
-         5),
-        ("Religious & Spiritual Activities",
-         "Quran study, Islamic studies events, and religious programs.",
-         6),
-        ("Personal Development & Skills",
-         "Courses, workshops, languages, hobbies, and self-directed learning.",
-         7),
-    ]
-    for name, description, order in categories:
+    for name, description, order in MISK_CORE_ACTIVITY_CATEGORIES:
         cursor.execute(
             "INSERT INTO activity_categories "
             "(name, description, display_order, is_active) "
             "VALUES (?, ?, ?, 1)",
-            (name, description, order)
+            (name, description, order),
         )
     conn.commit()
-    print("✓ Activity categories seeded")
+    print("✓ Activity categories seeded (Misk Core types)")
+
+
+# Misk Core activity types — the open-ended categories a student logs against
+# (source-of-truth §6). Title-cased for display; 'Competitions and Awards' and
+# 'Career Planning' are the homes for Hussain's seeded hero evidence.
+MISK_CORE_ACTIVITY_CATEGORIES = [
+    ("CCAP",
+     "Co-Curricular Activity Programme participation.", 1),
+    ("Project 10",
+     "Project 10 initiatives, deliverables, and outcomes.", 2),
+    ("Competitions and Awards",
+     "Competitions entered and awards, medals, or honours received.", 3),
+    ("Trips and Visits",
+     "Educational trips, visits, and excursions.", 4),
+    ("Community Service",
+     "Volunteering and community service contributions.", 5),
+    ("Career Planning",
+     "Career exploration, work experience, and planning activities.", 6),
+]
+
+
+def reconcile_misk_core_activity_categories(conn):
+    """Converge activity_categories to the Misk Core activity types (Chunk 32).
+
+    Runs every startup; idempotent. Each Misk Core type is inserted if missing
+    and (re)activated with a stable display order. Any OTHER category still
+    marked active is soft-deprecated (is_active=0) — never deleted — so any
+    existing student_activities rows keep resolving their (now-inactive)
+    category name on the join. Mirrors the seed_misk_core_quadrant pattern.
+    """
+    cursor = conn.cursor()
+    core_names = [name for name, _, _ in MISK_CORE_ACTIVITY_CATEGORIES]
+
+    for name, description, order in MISK_CORE_ACTIVITY_CATEGORIES:
+        cursor.execute(
+            "SELECT id FROM activity_categories WHERE name = ?", (name,)
+        )
+        existing = cursor.fetchone()
+        if existing is None:
+            cursor.execute(
+                "INSERT INTO activity_categories "
+                "(name, description, display_order, is_active) VALUES (?, ?, ?, 1)",
+                (name, description, order),
+            )
+        else:
+            cursor.execute(
+                "UPDATE activity_categories "
+                "SET description = ?, display_order = ?, is_active = 1 WHERE id = ?",
+                (description, order, existing['id']),
+            )
+
+    placeholders = ",".join("?" for _ in core_names)
+    cursor.execute(
+        f"UPDATE activity_categories SET is_active = 0 "
+        f"WHERE is_active = 1 AND name NOT IN ({placeholders})",
+        core_names,
+    )
+    deactivated = cursor.rowcount
+    conn.commit()
+    print(
+        f"✓ Misk Core activity categories reconciled "
+        f"({len(core_names)} active; {deactivated} legacy deactivated)"
+    )
 
 
 def seed_misk_core_quadrant(conn):
@@ -1116,21 +1166,21 @@ def _ensure_mit_offer_pdf(path):
 
 
 def seed_hussain_hero(conn):
-    """Attach Hussain Alsaleh's real evidence (Chunk 28).
+    """Attach Hussain Alsaleh's real evidence as approved Misk Core ACTIVITIES
+    (Chunk 32).
 
-    Five olympiad certificates bind to Misk Core -> "Competitions and Awards";
-    the watermarked MIT sample binds to Internship -> "Career Planning". Each
-    becomes an approved evidence_submissions row (mirroring /student/upload's
-    columns) with two approving teacher reviews, and the file is copied into
-    UPLOAD_DIR under a fresh UUID so it serves through the normal
-    authenticated files route.
+    Five olympiad certificates bind to the "Competitions and Awards" activity
+    category; the watermarked MIT sample binds to "Career Planning". Each
+    becomes an APPROVED student_activities row (status='approved', attributed
+    to a real teacher) with the file copied into UPLOAD_DIR under a fresh UUID
+    so it serves through the normal authenticated /files route.
 
     Sources live in backend/seed_assets/hussain/. The five olympiad PDFs are
     NOT generated here — if a source is missing we log and skip it (drop the
     file in later and restart to seed it). The MIT sample is generated on
     demand by _ensure_mit_offer_pdf (it is fictional, so we own it).
 
-    Idempotent: a file is skipped if Hussain already has a submission with the
+    Idempotent: a file is skipped if Hussain already has an activity with the
     same original_filename. Safe on every startup.
     """
     cursor = conn.cursor()
@@ -1144,50 +1194,60 @@ def seed_hussain_hero(conn):
         return
     hussain_id = row['id']
 
-    # Real teacher ids (reality over the handover's "3 & 4": teachers are
-    # seeded first, so they are ids 1 & 2; students start at 3). Reviews must
-    # be attributed to actual teachers, since the demo opens this evidence.
-    cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 2")
-    teacher_ids = [r['id'] for r in cursor.fetchall()]
+    # Real teacher id for review attribution (teachers seed first → ids 1 & 2).
+    cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 1")
+    t_row = cursor.fetchone()
+    reviewer_id = t_row['id'] if t_row is not None else None
 
     seed_assets_dir = os.path.join("seed_assets", "hussain")
     mit_path = os.path.join(seed_assets_dir, "mit_physics_offer_sample.pdf")
     _ensure_mit_offer_pdf(mit_path)
 
-    # (source_path, original_filename, quadrant_name, objective_title, description)
+    # (source_path, original_filename, category_name, title, activity_date,
+    #  description, tags)
     items = [
         (os.path.join(seed_assets_dir, "ijso_2023_silver.pdf"),
          "IJSO 2023 Thailand - Silver Medal.pdf",
-         "Misk Core", "Competitions and Awards",
-         "International Junior Science Olympiad 2023 (Thailand) — Silver Medal."),
+         "Competitions and Awards", "IJSO 2023 (Thailand) — Silver Medal",
+         "2023-12-10",
+         "International Junior Science Olympiad 2023 (Thailand) — Silver Medal.",
+         ["physics", "olympiad", "silver", "international"]),
         (os.path.join(seed_assets_dir, "gulf_physics_2024_silver.pdf"),
          "Gulf Physics Olympiad 2024 - Silver.pdf",
-         "Misk Core", "Competitions and Awards",
-         "Gulf Physics Olympiad 2024 — Silver Medal / 3rd place."),
+         "Competitions and Awards", "Gulf Physics Olympiad 2024 — Silver",
+         "2024-04-15",
+         "Gulf Physics Olympiad 2024 — Silver Medal / 3rd place.",
+         ["physics", "olympiad", "silver", "regional"]),
         (os.path.join(seed_assets_dir, "nbpho_2025_silver.pdf"),
          "NBPhO 2025 Tallinn - Silver.pdf",
-         "Misk Core", "Competitions and Awards",
-         "Nordic-Baltic Physics Olympiad 2025 (Tallinn) — Silver Medal."),
+         "Competitions and Awards", "NBPhO 2025 (Tallinn) — Silver Medal",
+         "2025-04-26",
+         "Nordic-Baltic Physics Olympiad 2025 (Tallinn) — Silver Medal.",
+         ["physics", "olympiad", "silver", "international"]),
         (os.path.join(seed_assets_dir, "apho_2025_bronze.pdf"),
          "APhO 2025 Dhahran - Bronze.pdf",
-         "Misk Core", "Competitions and Awards",
-         "Asian Physics Olympiad 2025 (Dhahran) — Bronze Medal."),
+         "Competitions and Awards", "APhO 2025 (Dhahran) — Bronze Medal",
+         "2025-05-04",
+         "Asian Physics Olympiad 2025 (Dhahran) — Bronze Medal.",
+         ["physics", "olympiad", "bronze", "international"]),
         (os.path.join(seed_assets_dir, "ipho_2025_bronze.pdf"),
          "IPhO 2025 France - Bronze.pdf",
-         "Misk Core", "Competitions and Awards",
-         "International Physics Olympiad 2025 (France) — Bronze Medal."),
+         "Competitions and Awards", "IPhO 2025 (France) — Bronze Medal",
+         "2025-07-21",
+         "International Physics Olympiad 2025 (France) — Bronze Medal.",
+         ["physics", "olympiad", "bronze", "international"]),
         (mit_path,
          "MIT Physics Offer (SAMPLE - NOT REAL).pdf",
-         "Internship", "Career Planning",
-         "DEMO SAMPLE — fictional MIT Physics offer artefact. Not a real offer."),
+         "Career Planning", "MIT Physics — Sample Offer (DEMO)",
+         "2025-12-01",
+         "DEMO SAMPLE — fictional MIT Physics offer artefact. Not a real offer.",
+         ["career", "university", "physics", "demo-sample"]),
     ]
 
-    def _objective_id(quadrant_name, title):
+    def _category_id(name):
         cursor.execute(
-            """SELECT o.id FROM objectives o
-               JOIN quadrants q ON q.id = o.quadrant_id
-               WHERE q.name = ? AND o.title = ? AND o.is_active = 1""",
-            (quadrant_name, title),
+            "SELECT id FROM activity_categories WHERE name = ? AND is_active = 1",
+            (name,),
         )
         r = cursor.fetchone()
         return r['id'] if r else None
@@ -1196,9 +1256,11 @@ def seed_hussain_hero(conn):
 
     seeded = 0
     skipped_missing = 0
-    for source_path, original_filename, quadrant_name, title, description in items:
+    reviewed_at = datetime.utcnow().isoformat()
+    for source_path, original_filename, category_name, title, activity_date, \
+            description, tags in items:
         cursor.execute(
-            "SELECT 1 FROM evidence_submissions "
+            "SELECT 1 FROM student_activities "
             "WHERE student_id = ? AND original_filename = ?",
             (hussain_id, original_filename),
         )
@@ -1210,10 +1272,10 @@ def seed_hussain_hero(conn):
             skipped_missing += 1
             continue
 
-        objective_id = _objective_id(quadrant_name, title)
-        if objective_id is None:
-            print(f"⚠️  Hussain seed: objective '{title}' in '{quadrant_name}' "
-                  f"not found/active; skipping {original_filename}.")
+        category_id = _category_id(category_name)
+        if category_id is None:
+            print(f"⚠️  Hussain seed: category '{category_name}' not found/active; "
+                  f"skipping {original_filename}.")
             continue
 
         ext = os.path.splitext(source_path)[1].lower()
@@ -1224,26 +1286,19 @@ def seed_hussain_hero(conn):
         mime_type = "application/pdf"
 
         cursor.execute(
-            """INSERT INTO evidence_submissions
-               (student_id, objective_id, file_path, file_name, description, status,
-                stored_filename, original_filename, file_extension, file_size_bytes, mime_type)
-               VALUES (?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?)""",
-            (hussain_id, objective_id, disk_path, original_filename, description,
-             stored_filename, original_filename, ext, file_size_bytes, mime_type),
+            """INSERT INTO student_activities
+               (student_id, category_id, title, description, activity_date,
+                stored_filename, original_filename, file_extension, file_size_bytes,
+                mime_type, tags, status, reviewed_by, reviewed_at, review_feedback)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?)""",
+            (hussain_id, category_id, title, description, activity_date,
+             stored_filename, original_filename, ext, file_size_bytes, mime_type,
+             json.dumps(tags), reviewer_id, reviewed_at,
+             "Verified certificate. Outstanding achievement."),
         )
-        submission_id = cursor.lastrowid
-
-        for teacher_id in teacher_ids:
-            cursor.execute(
-                """INSERT INTO evidence_reviews
-                   (submission_id, teacher_id, rating, feedback, decision)
-                   VALUES (?, ?, ?, ?, 'approved')""",
-                (submission_id, teacher_id, 5,
-                 "Verified certificate. Outstanding achievement."),
-            )
         seeded += 1
 
     if seeded or skipped_missing:
         conn.commit()
-        print(f"✓ Hussain hero evidence seeded ({seeded} file(s); "
+        print(f"✓ Hussain hero activities seeded ({seeded} file(s); "
               f"{skipped_missing} missing source(s) skipped)")

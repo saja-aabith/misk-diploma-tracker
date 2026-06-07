@@ -17,6 +17,471 @@ function extractErrorMessage(err, fallback) {
   return fallback;
 }
 
+// ---------------------------------------------------------------------------
+// Chunk 31 — result capture + manual diploma award (Student Reports tab)
+// ---------------------------------------------------------------------------
+// These constants are presentational only: they drive which input a result
+// objective shows and provide fast client-side feedback. The backend
+// (routes/teacher.py) remains the source of truth and validates every result.
+const RESULT_BASED_TITLES = ['IELTS', 'IGCSE', 'IAL', 'Qudurat', 'Tahsili'];
+const IGCSE_GRADE_OPTIONS = ['A*', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'U'];
+const IAL_GRADE_OPTIONS = ['A*', 'A', 'B', 'C', 'D', 'E', 'U'];
+const ATTEMPT_LIMITS = { Qudurat: 5, Tahsili: 2 };
+const AWARD_LEVELS = ['Pass', 'Merit', 'Distinction'];
+
+// result_value comes back as a number-string (score titles) or a
+// JSON-encoded array string (grade titles). Render either readably.
+function formatResultValue(rv) {
+  if (rv === null || rv === undefined) return '';
+  try {
+    const parsed = JSON.parse(rv);
+    if (Array.isArray(parsed)) return parsed.join(', ');
+  } catch (e) {
+    // not JSON — fall through and show the raw value (a score string)
+  }
+  return String(rv);
+}
+
+// One row in the Academic Results editor. Holds its own input state so the
+// parent dashboard's state stays minimal; calls teacher.recordObjectiveResult
+// on save and reports success/error inline. Recording a result does not
+// change the objective's approval status (that flows through reviews).
+function ResultEntryRow({ studentId, objective }) {
+  const title = objective.title;
+  const isGradeBased = title === 'IGCSE' || title === 'IAL';
+  const hasAttempts = title === 'Qudurat' || title === 'Tahsili';
+  const maxAttempts = ATTEMPT_LIMITS[title] || 1;
+  const allowedGrades = title === 'IGCSE' ? IGCSE_GRADE_OPTIONS : IAL_GRADE_OPTIONS;
+  const scoreMax = title === 'IELTS' ? 9 : 100;
+  const scoreStep = title === 'IELTS' ? 0.5 : 1;
+
+  const [score, setScore] = useState('');
+  const [gradesInput, setGradesInput] = useState('');
+  const [attempts, setAttempts] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [savedMsg, setSavedMsg] = useState('');
+
+  const handleSave = async () => {
+    setError('');
+    setSavedMsg('');
+
+    const payload = { studentId: Number(studentId), objectiveId: objective.objective_id };
+
+    if (isGradeBased) {
+      const grades = gradesInput
+        .split(',')
+        .map((g) => g.trim().toUpperCase())
+        .filter(Boolean);
+      if (grades.length === 0) {
+        setError('Enter at least one grade (comma-separated).');
+        return;
+      }
+      const bad = grades.filter((g) => !allowedGrades.includes(g));
+      if (bad.length > 0) {
+        setError(`Invalid ${title} grade(s): ${bad.join(', ')}`);
+        return;
+      }
+      payload.grades = grades;
+    } else {
+      if (score === '' || Number.isNaN(Number(score))) {
+        setError('Enter a numeric score.');
+        return;
+      }
+      const numeric = Number(score);
+      if (numeric < 0 || numeric > scoreMax) {
+        setError(`${title} score must be between 0 and ${scoreMax}.`);
+        return;
+      }
+      payload.score = numeric;
+      if (hasAttempts) payload.attempts = Number(attempts);
+    }
+
+    setSaving(true);
+    try {
+      const res = await teacher.recordObjectiveResult(payload);
+      const rv = res?.data?.result_value;
+      setSavedMsg(`Saved${rv ? `: ${formatResultValue(rv)}` : ''} \u2713`);
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Could not save result.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        flexWrap: 'wrap',
+        padding: '12px 14px',
+        borderRadius: 12,
+        background: 'rgba(255,255,255,0.85)',
+        border: '1px solid rgba(0,0,0,0.06)',
+      }}
+    >
+      <div style={{ minWidth: 92, fontWeight: 800, color: '#0b3f33' }}>{title}</div>
+
+      {isGradeBased ? (
+        <input
+          type="text"
+          value={gradesInput}
+          onChange={(e) => setGradesInput(e.target.value)}
+          placeholder={`e.g. ${allowedGrades.slice(0, 3).join(', ')}`}
+          disabled={saving}
+          style={{ flex: '1 1 200px', minWidth: 160 }}
+        />
+      ) : (
+        <input
+          type="number"
+          value={score}
+          onChange={(e) => setScore(e.target.value)}
+          min={0}
+          max={scoreMax}
+          step={scoreStep}
+          placeholder={`0–${scoreMax}`}
+          disabled={saving}
+          style={{ width: 110 }}
+        />
+      )}
+
+      {hasAttempts && (
+        <label style={{ fontSize: 13, color: '#4e615d', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Attempt
+          <select
+            value={attempts}
+            onChange={(e) => setAttempts(Number(e.target.value))}
+            disabled={saving}
+          >
+            {Array.from({ length: maxAttempts }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <button
+        type="button"
+        className="btn-review"
+        onClick={handleSave}
+        disabled={saving}
+      >
+        {saving ? 'Saving…' : 'Save result'}
+      </button>
+
+      {savedMsg && <span style={{ color: '#02664b', fontWeight: 700, fontSize: 13 }}>{savedMsg}</span>}
+      {error && <span style={{ color: '#c0392b', fontWeight: 600, fontSize: 13 }}>{error}</span>}
+
+      {isGradeBased && (
+        <div style={{ flexBasis: '100%', fontSize: 12, color: '#7f8c8d' }}>
+          Allowed: {allowedGrades.join(', ')} — comma-separated, one per subject.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Academic Results editor: pulls the result-based objectives out of the
+// student's report (Academic quadrant) and renders one ResultEntryRow each.
+// Renders nothing if the report has no result-based objectives.
+function AcademicResultsBlock({ studentId, report }) {
+  const academic = (report.quadrant_reports || []).find(
+    (q) => q.quadrant_name === 'Academic'
+  );
+  const objectives = (academic?.objectives || []).filter((o) =>
+    RESULT_BASED_TITLES.includes(o.title)
+  );
+  if (objectives.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <h4 style={{ margin: 0 }}>Academic Results</h4>
+      <p style={{ fontSize: 13, color: '#6d7f7a', margin: '6px 0 14px' }}>
+        Record exam outcomes for result-based objectives. This stores the
+        result for the skills profile and does not change the objective's
+        approval status.
+      </p>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {objectives.map((o) => (
+          <ResultEntryRow key={o.objective_id} studentId={studentId} objective={o} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Formal Diploma panel: shows live eligibility for the selected student and,
+// when eligible, lets the teacher record the Pass/Merit/Distinction band.
+// The system never computes the band; it records the teacher's selection.
+// Keyed by studentId in the parent so it re-fetches on student change.
+function DiplomaAwardPanel({ studentId }) {
+  const [state, setState] = useState(null); // { eligible_for_diploma, award, student_name }
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [level, setLevel] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setLoadError('');
+    teacher
+      .getDiplomaAward(studentId)
+      .then((res) => {
+        if (!alive) return;
+        setState(res.data);
+        setLevel(res.data?.award?.award_level || '');
+        setNotes(res.data?.award?.notes || '');
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setLoadError(extractErrorMessage(err, 'Could not load diploma status.'));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [studentId]);
+
+  const refetch = () => {
+    teacher
+      .getDiplomaAward(studentId)
+      .then((res) => setState(res.data))
+      .catch(() => {});
+  };
+
+  const handleRecord = async () => {
+    setSaveError('');
+    if (!level) {
+      setSaveError('Choose an award level.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await teacher.setDiplomaAward({
+        studentId: Number(studentId),
+        awardLevel: level,
+        notes: notes.trim() || null,
+      });
+      refetch();
+    } catch (err) {
+      setSaveError(extractErrorMessage(err, 'Could not record award.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const eligible = !!state?.eligible_for_diploma;
+  const award = state?.award || null;
+
+  return (
+    <div
+      style={{
+        marginTop: 28,
+        padding: 18,
+        borderRadius: 14,
+        background: 'rgba(2, 102, 75, 0.06)',
+        border: '1px solid rgba(2, 102, 75, 0.12)',
+      }}
+    >
+      <h4 style={{ margin: 0 }}>Formal Diploma</h4>
+
+      {loading && <div style={{ marginTop: 10, color: '#6d7f7a' }}>Loading diploma status…</div>}
+
+      {loadError && (
+        <div className="error-message" style={{ marginTop: 10 }}>
+          {loadError}
+        </div>
+      )}
+
+      {!loading && !loadError && (
+        <>
+          <div
+            style={{
+              marginTop: 10,
+              fontWeight: 700,
+              color: eligible ? '#02664b' : '#8a6d3b',
+            }}
+          >
+            {eligible
+              ? 'Eligible — all mandatory objectives approved.'
+              : 'Not yet eligible — all mandatory objectives must be approved.'}
+          </div>
+
+          {award && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: 'rgba(243, 156, 18, 0.12)',
+                border: '1px solid rgba(243, 156, 18, 0.25)',
+                color: '#0b3f33',
+                fontWeight: 700,
+              }}
+            >
+              Awarded: {award.award_level}
+              {award.selected_at && (
+                <span style={{ fontWeight: 500, color: '#4e615d' }}>
+                  {' '}· {new Date(award.selected_at).toLocaleDateString()}
+                </span>
+              )}
+              {award.selected_by_name && (
+                <span style={{ fontWeight: 500, color: '#4e615d' }}>
+                  {' '}· by {award.selected_by_name}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div style={{ marginTop: 16, opacity: eligible ? 1 : 0.55 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {AWARD_LEVELS.map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => setLevel(lvl)}
+                  disabled={!eligible || saving}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: 10,
+                    minHeight: 44,
+                    fontWeight: 700,
+                    cursor: eligible ? 'pointer' : 'not-allowed',
+                    color: level === lvl ? '#ffffff' : '#0b3f33',
+                    background: level === lvl ? '#02664b' : 'rgba(255,255,255,0.85)',
+                    border: '1px solid rgba(2, 102, 75, 0.25)',
+                  }}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes (optional)"
+              disabled={!eligible || saving}
+              style={{ marginTop: 12, width: '100%', minHeight: 64 }}
+            />
+
+            {saveError && (
+              <div className="error-message" style={{ marginTop: 10 }}>
+                {saveError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn-login"
+              onClick={handleRecord}
+              disabled={!eligible || saving}
+              style={{ marginTop: 12 }}
+            >
+              {saving ? 'Recording…' : award ? 'Update award' : 'Record award'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// One card in the Misk Core activity review queue (Chunk 32). Holds its own
+// feedback + busy state and calls teacher.reviewActivity on a decision; the
+// parent reloads the queue via onReviewed. Approving/rejecting is allowed
+// from any current status so a teacher can correct a prior decision.
+function ActivityReviewCard({ activity, onReviewed }) {
+  const [feedback, setFeedback] = useState(activity.review_feedback || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const decide = async (decision) => {
+    setError('');
+    setBusy(true);
+    try {
+      await teacher.reviewActivity({
+        activityId: activity.id,
+        decision,
+        feedback: feedback.trim() || null,
+      });
+      onReviewed();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Could not submit the decision.'));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="queue-item">
+      <div className="queue-info">
+        <h4>{activity.student_name}</h4>
+        <p>
+          {activity.category_name} • {activity.title}{' '}
+          <span className={`status-badge status-${activity.status}`}>
+            {activity.status.replace('_', ' ')}
+          </span>
+        </p>
+        {activity.activity_date && (
+          <p style={{ fontSize: 13, color: '#6d7f7a' }}>
+            {new Date(activity.activity_date).toLocaleDateString()}
+          </p>
+        )}
+        {activity.description && <p>{activity.description}</p>}
+        {activity.tags && activity.tags.length > 0 && (
+          <p style={{ fontSize: 13, color: '#6d7f7a' }}>
+            Tags: {activity.tags.join(', ')}
+          </p>
+        )}
+        {activity.stored_filename && (
+          <AttachmentLink
+            storedFilename={activity.stored_filename}
+            originalFilename={activity.original_filename}
+          />
+        )}
+      </div>
+
+      <div className="queue-actions" style={{ marginTop: 12 }}>
+        <textarea
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          placeholder="Feedback (optional)"
+          disabled={busy}
+          style={{ width: '100%', minHeight: 56 }}
+        />
+        {error && <div className="error-message" style={{ marginTop: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn-approve"
+            disabled={busy}
+            onClick={() => decide('approved')}
+          >
+            {busy ? '…' : 'Approve'}
+          </button>
+          <button
+            type="button"
+            className="btn-reject"
+            disabled={busy}
+            onClick={() => decide('rejected')}
+          >
+            {busy ? '…' : 'Reject'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('review');
   const [submissions, setSubmissions] = useState([]);
@@ -38,12 +503,40 @@ function TeacherDashboard() {
   const [studentProfileError, setStudentProfileError] = useState('');
   const [studentProfileLoading, setStudentProfileLoading] = useState(false);
 
+  // Chunk 32: Misk Core activity review queue.
+  const [activityQueue, setActivityQueue] = useState([]);
+  const [activityFilter, setActivityFilter] = useState('pending_review');
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+
   const user = getUser();
 
   useEffect(() => {
     loadSubmissions();
     loadStudents();
   }, [filter]);
+
+  // Chunk 32: load the activity queue when its tab is active or the status
+  // filter changes. Gated on activeTab so we don't fetch it needlessly.
+  useEffect(() => {
+    if (activeTab === 'activities') {
+      loadActivityQueue(activityFilter);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activityFilter]);
+
+  const loadActivityQueue = async (status) => {
+    setActivityLoading(true);
+    setActivityError('');
+    try {
+      const response = await teacher.getActivitiesForReview(status);
+      setActivityQueue(response.data.activities);
+    } catch (err) {
+      setActivityError(extractErrorMessage(err, 'Could not load the activity queue.'));
+    } finally {
+      setActivityLoading(false);
+    }
+  };
 
   const loadSubmissions = async () => {
     try {
@@ -236,6 +729,15 @@ function TeacherDashboard() {
             Student Profiles
             {activeTab === 'profile' && <span style={activeUnderline} />}
           </button>
+
+          <button
+            className={`tab ${activeTab === 'activities' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activities')}
+            style={{ ...tabBase, ...(activeTab === 'activities' ? tabActive : tabInactive) }}
+          >
+            Activity Review
+            {activeTab === 'activities' && <span style={activeUnderline} />}
+          </button>
         </div>
 
         {activeTab === 'review' && (
@@ -335,6 +837,9 @@ function TeacherDashboard() {
                     <span>Rejected: {studentReport.submission_summary.rejected}</span>
                   </div>
                 </div>
+
+                <AcademicResultsBlock studentId={selectedStudent} report={studentReport} />
+                <DiplomaAwardPanel key={selectedStudent} studentId={selectedStudent} />
               </div>
             )}
           </>
@@ -462,6 +967,43 @@ function TeacherDashboard() {
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {activeTab === 'activities' && (
+          <>
+            <div className="filter-bar">
+              <select
+                value={activityFilter}
+                onChange={(e) => setActivityFilter(e.target.value)}
+              >
+                <option value="pending_review">Pending Review</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+
+            <div className="card">
+              <h3>Misk Core Activity Queue ({activityQueue.length})</h3>
+              {activityError && <div className="error-message">{activityError}</div>}
+              {activityLoading ? (
+                <div style={{ color: '#6d7f7a' }}>Loading…</div>
+              ) : (
+                <div className="review-queue">
+                  {activityQueue.length === 0 && (
+                    <div style={{ color: '#6d7f7a' }}>No activities in this view.</div>
+                  )}
+                  {activityQueue.map((a) => (
+                    <ActivityReviewCard
+                      key={a.id}
+                      activity={a}
+                      onReviewed={() => loadActivityQueue(activityFilter)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
