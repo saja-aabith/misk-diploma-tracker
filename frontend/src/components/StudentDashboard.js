@@ -5,6 +5,7 @@ import QuadrantCircle3D from './QuadrantCircle3D';
 import UploadModal from './UploadModal';
 import ActivityLogModal from './ActivityLogModal';
 import SkillsRadar from './SkillsRadar';
+import SkillsConstellation from './SkillsConstellation';
 import AttachmentLink from './AttachmentLink';
 import JourneyTimeline from './JourneyTimeline';
 import DiplomaIdentityPanel from './DiplomaIdentityPanel';
@@ -362,6 +363,17 @@ function StudentDashboard() {
           >
             My Skills
           </button>
+
+          <button
+            className={`tab ${activeTab === 'myprofile' ? 'active' : ''}`}
+            style={{
+              ...tabBaseStyle,
+              ...(activeTab === 'myprofile' ? tabActiveStyle : tabInactiveStyle),
+            }}
+            onClick={() => setActiveTab('myprofile')}
+          >
+            My Profile
+          </button>
         </div>
 
         {activeTab === 'progress' && (
@@ -617,6 +629,32 @@ function StudentDashboard() {
                   data={skillsProfile.dimensions.filter((d) => d.group === 'VAA')}
                 />
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'myprofile' && (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>My Profile</h3>
+              {skillsProfile && (
+                <span style={{ color: '#7f8c8d', fontSize: 14 }}>
+                  overall {skillsProfile.overall_average}
+                </span>
+              )}
+            </div>
+            <p style={{ color: '#666', fontSize: 14, marginTop: 6 }}>
+              Your MSHPL skills as a constellation — brighter, further stars are
+              stronger. Gold is “How I Think”, violet is “Who I Am”; faint stars
+              near the centre have no evidence yet.
+            </p>
+            {!skillsProfile ? (
+              <div style={{ color: '#7f8c8d' }}>Loading…</div>
+            ) : (
+              <SkillsConstellation
+                profile={skillsProfile}
+                studentName={dashboardData?.student_name}
+              />
             )}
           </div>
         )}
