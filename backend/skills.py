@@ -1,6 +1,6 @@
-# Misk Skills Profile engine (Chunk 33).
+# Misk Skills Profile engine (Chunk 33; ACP leaf view added Chunk 34).
 #
-# Computes the 16-dimension MSHPL skills profile ON READ from existing tables
+# Computes the MSHPL skills profile ON READ from existing tables
 # (student_objective_progress + objectives) — nothing is stored. This is a
 # deliberate choice: live calculation is always correct (no cache to go stale
 # when a result is entered or an objective approved) and trivially cheap at
@@ -20,14 +20,62 @@ import json
 ACP_DIMENSIONS = [
     "Meta-Thinking", "Linking", "Analysing", "Creating", "Realising",
 ]
+
+# The 20 HPL ACP leaf characteristics under their 5 group headings (verbatim
+# from the MISK/HPL ACP progression poster). These drive the LEAF-LEVEL display
+# only (constellation stars + the grouped "How I Think — detail" list). Scoring
+# still happens at the 5 group level via OBJECTIVE_MAP; each leaf INHERITS its
+# parent group's computed score and counts (decision: inheritance, Chunk 34).
+# Until Gemini-rated Core activities arrive to differentiate them, a covered
+# group's leaves read alike — that is intended. Keys MUST match ACP_DIMENSIONS.
+ACP_LEAVES = {
+    "Meta-Thinking": [
+        "Meta-cognition", "Self-regulation", "Strategy-planning",
+        "Intellectual confidence",
+    ],
+    "Linking": [
+        "Generalisation", "Connection finding", "Big picture thinking",
+        "Abstraction", "Imagination", "Seeing alternative perspectives",
+    ],
+    "Analysing": [
+        "Critical or logical thinking", "Precision",
+        "Complex and multi-step problem solving",
+    ],
+    "Creating": [
+        "Intellectual playfulness", "Flexible thinking", "Fluent thinking",
+        "Originality", "Evolutionary and revolutionary thinking",
+    ],
+    "Realising": [
+        "Automaticity", "Speed and accuracy",
+    ],
+}
 VAA_DIMENSIONS = [
     "Collaborative", "Concerned for Society", "Confident", "Enquiring",
     "Creative & Enterprising", "Open-Minded", "Risk-Taking", "Practice",
     "Perseverance", "Resilience", "Digital Thinker",
 ]
+
+# The 11 VAA dimensions under their HPL behavioural clusters (verbatim from the
+# MISK/HPL VAA progression poster), plus Digital Thinker as the MISK extension.
+# Display grouping only (the "Who I Am — detail" table); scoring is unaffected.
+# Keys' union MUST equal VAA_DIMENSIONS.
+VAA_CLUSTERS = {
+    "Empathetic": ["Collaborative", "Concerned for Society", "Confident"],
+    "Agile": ["Enquiring", "Creative & Enterprising", "Open-Minded", "Risk-Taking"],
+    "Hard Working": ["Practice", "Perseverance", "Resilience"],
+    "Digital Thinker": ["Digital Thinker"],
+}
 ALL_DIMENSIONS = ACP_DIMENSIONS + VAA_DIMENSIONS
 _GROUP_OF = {d: "ACP" for d in ACP_DIMENSIONS}
 _GROUP_OF.update({d: "VAA" for d in VAA_DIMENSIONS})
+
+# Display category for each dimension in `dimensions`: VAA dimensions carry
+# their HPL cluster; the 5 ACP group rows carry None (their leaf breakdown and
+# per-leaf categories live in `acp_leaves`).
+_CATEGORY_OF = {}
+for _cluster, _cluster_dims in VAA_CLUSTERS.items():
+    for _cd in _cluster_dims:
+        _CATEGORY_OF[_cd] = _cluster
 
 # ---------------------------------------------------------------------------
 # Objective -> dimension map (source-of-truth section 11), keyed by the exact
@@ -189,7 +237,8 @@ def compute_skills_profile(cursor, student_id):
         entries = per_dim[d]
         if not entries:
             dimensions.append({
-                "dimension": d, "group": _GROUP_OF[d], "score": 0,
+                "dimension": d, "group": _GROUP_OF[d], "category": _CATEGORY_OF.get(d),
+                "score": 0,
                 "evidence_count": 0, "activity_count": 0, "year_count": 0,
                 "status": "no_evidence",
             })
@@ -213,10 +262,32 @@ def compute_skills_profile(cursor, student_id):
         final = _clamp(score_mandatory + min(CORE_CAP_POINTS, core_uplift), 0.0, 100.0)
 
         dimensions.append({
-            "dimension": d, "group": _GROUP_OF[d], "score": round(final),
+            "dimension": d, "group": _GROUP_OF[d], "category": _CATEGORY_OF.get(d),
+            "score": round(final),
             "evidence_count": len(ratings), "activity_count": len(sources),
             "year_count": len(years), "status": "scored",
         })
+
+    # Leaf-level ACP view: each of the 20 HPL leaves inherits the score and
+    # evidence counts of its parent group (decision: inheritance). This drives
+    # the constellation and the grouped leaf list ONLY; `dimensions` (the 5 ACP
+    # groups + 11 VAA) and every average below are computed exactly as before,
+    # so the verified group-level profile is unaffected.
+    by_dim = {x["dimension"]: x for x in dimensions}
+    acp_leaves = []
+    for group in ACP_DIMENSIONS:
+        parent = by_dim[group]
+        for leaf in ACP_LEAVES[group]:
+            acp_leaves.append({
+                "dimension": leaf,
+                "group": "ACP",
+                "category": group,
+                "score": parent["score"],
+                "evidence_count": parent["evidence_count"],
+                "activity_count": parent["activity_count"],
+                "year_count": parent["year_count"],
+                "status": parent["status"],
+            })
 
     def _avg(group):
         vals = [x["score"] for x in dimensions if x["group"] == group]
@@ -225,6 +296,7 @@ def compute_skills_profile(cursor, student_id):
     return {
         "student_id": student_id,
         "dimensions": dimensions,
+        "acp_leaves": acp_leaves,
         "acp_average": _avg("ACP"),
         "vaa_average": _avg("VAA"),
         "overall_average": round(sum(x["score"] for x in dimensions) / len(dimensions), 1),

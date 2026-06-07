@@ -239,6 +239,27 @@ export const teacher = {
   // A student's 16-dimension Misk Skills Profile (teacher view), computed live.
   getSkillsProfile: (studentId) =>
     apiClient.get(`/teacher/skills-profile/${studentId}`),
+
+  // GET /teacher/students — full student roster for pickers (every student,
+  // not only those with submissions). Returns { students: [{ id, full_name }] }.
+  getStudents: () =>
+    apiClient.get('/teacher/students'),
+
+  // GET /teacher/report-pdf/{studentId}
+  // Streams a generated PDF report (formal diploma + skills profile). Returns a
+  // { blob, filename } descriptor the caller turns into a download. We fetch via
+  // axios (responseType 'blob') because a plain <a href> can't attach the Bearer
+  // token — same constraint as student.fetchFileBlob. filename comes from the
+  // server's Content-Disposition, with a sensible fallback.
+  downloadStudentReport: async (studentId) => {
+    const response = await apiClient.get(`/teacher/report-pdf/${studentId}`, {
+      responseType: 'blob',
+    });
+    const disposition = response.headers['content-disposition'] || '';
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const filename = match ? match[1] : `Misk_Diploma_Report_${studentId}.pdf`;
+    return { blob: response.data, filename };
+  },
 };
 
 // Build an absolute URL to an authenticated file. NOTE: this URL is NOT

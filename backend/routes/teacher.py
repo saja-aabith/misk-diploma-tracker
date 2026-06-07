@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from database import get_db
@@ -23,6 +23,7 @@ from models import (
 )
 from schemas import ActivityOut, StudentProfileOut
 from utils import get_current_teacher
+from report_pdf import build_student_report_pdf
 
 router = APIRouter()
 
@@ -887,3 +888,147 @@ async def get_student_skills_profile(
     profile["student_name"] = student['full_name']
     conn.close()
     return profile
+
+
+def _fmt_result(result_value):
+    """Human-readable result for the PDF: grade arrays render as 'A*, A, B';
+    numeric strings (IELTS/Qudurat/Tahsili) pass through; empty -> em dash."""
+    if not result_value:
+        return "\u2014"
+    rv = str(result_value).strip()
+    if rv.startswith("["):
+        try:
+            arr = json.loads(rv)
+            if isinstance(arr, list):
+                return ", ".join(str(x) for x in arr)
+        except (ValueError, json.JSONDecodeError):
+            pass
+    return rv
+
+
+@router.get("/report-pdf/{student_id}")
+async def get_student_report_pdf(
+    student_id: int,
+    current_user: dict = Depends(get_current_teacher),
+):
+    """Stream a single PDF report for one student: the formal Misk Diploma
+    (manual award + mandatory-objective progress) and the Misk Skills Profile.
+
+    Teacher-only; 404 if the student does not exist. The PDF is built in memory
+    and streamed straight to the authenticated teacher — nothing is written to
+    disk or any third-party store (school-controlled per the data policy).
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT full_name FROM users WHERE id = ? AND role = 'student'",
+        (student_id,),
+    )
+    student = cursor.fetchone()
+    if student is None:
+        conn.close()
+        _err(404, "STUDENT_NOT_FOUND", "Student not found.")
+    student_name = student['full_name']
+
+    # Diploma award row (if any).
+    cursor.execute(
+        """
+        SELECT da.award_level, da.selected_at, u.full_name AS selected_by_name
+        FROM diploma_awards da
+        LEFT JOIN users u ON u.id = da.selected_by
+        WHERE da.student_id = ?
+        """,
+        (student_id,),
+    )
+    award_row = cursor.fetchone()
+
+    # Live eligibility + counts (same logic as _is_eligible; computed inline so
+    # the report can also show "N of M approved" while in progress).
+    cursor.execute("SELECT COUNT(*) FROM objectives WHERE is_active = 1")
+    active_count = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM student_objective_progress sop
+        JOIN objectives o ON o.id = sop.objective_id
+        WHERE sop.student_id = ? AND o.is_active = 1 AND sop.status = 'approved'
+        """,
+        (student_id,),
+    )
+    approved_count = cursor.fetchone()[0]
+
+    diploma = {
+        "award_level": award_row['award_level'] if award_row else None,
+        "selected_by_name": award_row['selected_by_name'] if award_row else None,
+        "selected_at": award_row['selected_at'] if award_row else None,
+        "eligible": active_count > 0 and approved_count == active_count,
+        "approved_count": approved_count,
+        "active_count": active_count,
+    }
+
+    # Mandatory-objective progress grouped by quadrant, in display order. Misk
+    # Core has no active objectives, so it yields no rows and is omitted.
+    cursor.execute(
+        """
+        SELECT q.name AS quadrant_name, q.color_hex AS color,
+               o.id AS objective_id, o.title AS title,
+               COALESCE(sop.status, 'not_started') AS status,
+               sop.result_value AS result_value
+        FROM quadrants q
+        JOIN objectives o ON o.quadrant_id = q.id AND o.is_active = 1
+        LEFT JOIN student_objective_progress sop
+               ON sop.objective_id = o.id AND sop.student_id = ?
+        ORDER BY q.display_order, o.id
+        """,
+        (student_id,),
+    )
+    quadrants = []
+    by_quadrant = {}
+    for row in cursor.fetchall():
+        qname = row['quadrant_name']
+        if qname not in by_quadrant:
+            by_quadrant[qname] = {"name": qname, "color": row['color'], "objectives": []}
+            quadrants.append(by_quadrant[qname])
+        by_quadrant[qname]["objectives"].append({
+            "title": row['title'],
+            "status": row['status'],
+            "result_display": _fmt_result(row['result_value']),
+        })
+
+    skills = compute_skills_profile(cursor, student_id)
+    conn.close()
+
+    report = {
+        "student_name": student_name,
+        "generated_at": datetime.utcnow().strftime("%d %B %Y, %H:%M UTC"),
+        "diploma": diploma,
+        "quadrants": quadrants,
+        "skills": skills,
+    }
+    pdf_bytes = build_student_report_pdf(report)
+
+    safe = "".join(c for c in student_name if c.isalnum() or c in " -_").strip()
+    filename = "Misk_Diploma_Report_%s.pdf" % (safe.replace(" ", "_") or "student")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="%s"' % filename},
+    )
+
+
+@router.get("/students")
+async def list_students(current_user: dict = Depends(get_current_teacher)):
+    """The full student roster for teacher pickers (Student Reports / Profiles).
+
+    Returns every student regardless of whether they have uploaded evidence, so
+    fully-approved students with no file uploads still appear. Teacher-only.
+    Shape: { "students": [ { "id", "full_name" } ] }, ordered by name.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, full_name FROM users WHERE role = 'student' ORDER BY full_name"
+    )
+    students = [{"id": r['id'], "full_name": r['full_name']} for r in cursor.fetchall()]
+    conn.close()
+    return {"students": students}

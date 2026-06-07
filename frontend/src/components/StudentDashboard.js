@@ -6,6 +6,7 @@ import UploadModal from './UploadModal';
 import ActivityLogModal from './ActivityLogModal';
 import SkillsRadar from './SkillsRadar';
 import SkillsConstellation from './SkillsConstellation';
+import SkillsDetailTable from './SkillsDetailTable';
 import AttachmentLink from './AttachmentLink';
 import JourneyTimeline from './JourneyTimeline';
 import DiplomaIdentityPanel from './DiplomaIdentityPanel';
@@ -617,18 +618,39 @@ function StudentDashboard() {
             {!skillsProfile ? (
               <div style={{ color: '#7f8c8d' }}>Loading…</div>
             ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 12 }}>
-                <SkillsRadar
-                  title="How I Think"
-                  accent="#02664b"
-                  data={skillsProfile.dimensions.filter((d) => d.group === 'ACP')}
-                />
-                <SkillsRadar
-                  title="Who I Am"
-                  accent="#0fb989"
-                  data={skillsProfile.dimensions.filter((d) => d.group === 'VAA')}
-                />
-              </div>
+              <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 12 }}>
+                  <SkillsRadar
+                    title="How I Think"
+                    accent="#02664b"
+                    size={380}
+                    showValues={false}
+                    data={skillsProfile.acp_leaves}
+                  />
+                  <SkillsRadar
+                    title="Who I Am"
+                    accent="#0fb989"
+                    showValues={false}
+                    data={skillsProfile.dimensions.filter((d) => d.group === 'VAA')}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
+                  <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+                    <SkillsDetailTable
+                      title="How I Think — detail"
+                      rows={skillsProfile.acp_leaves}
+                    />
+                  </div>
+                  <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+                    <SkillsDetailTable
+                      title="Who I Am — detail"
+                      groupLabel="Cluster"
+                      itemLabel="Attribute"
+                      rows={skillsProfile.dimensions.filter((d) => d.group === 'VAA')}
+                    />
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}

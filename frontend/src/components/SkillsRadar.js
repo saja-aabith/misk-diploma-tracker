@@ -33,7 +33,7 @@ function wrapLabel(name) {
   return [best.a, best.b];
 }
 
-function SkillsRadar({ title, data, accent = '#02664b', size = 300 }) {
+function SkillsRadar({ title, data, accent = '#02664b', size = 300, showValues = true }) {
   const items = Array.isArray(data) ? data : [];
   const n = items.length;
 
@@ -123,17 +123,19 @@ function SkillsRadar({ title, data, accent = '#02664b', size = 300 }) {
         })}
       </svg>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', justifyContent: 'center', marginTop: 10 }}>
-        {items.map((d) => {
-          const muted = d.status === 'no_evidence';
-          return (
-            <span key={d.dimension} style={{ fontSize: 12, color: muted ? '#aab2ae' : '#445' }}>
-              {d.dimension}{' '}
-              <strong style={{ color: muted ? '#aab2ae' : '#02664b' }}>{muted ? '—' : d.score}</strong>
-            </span>
-          );
-        })}
-      </div>
+      {showValues && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', justifyContent: 'center', marginTop: 10 }}>
+          {items.map((d) => {
+            const muted = d.status === 'no_evidence';
+            return (
+              <span key={d.dimension} style={{ fontSize: 12, color: muted ? '#aab2ae' : '#445' }}>
+                {d.dimension}{' '}
+                <strong style={{ color: muted ? '#aab2ae' : '#02664b' }}>{muted ? '—' : d.score}</strong>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

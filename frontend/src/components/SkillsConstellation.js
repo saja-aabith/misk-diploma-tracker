@@ -2,9 +2,11 @@ import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 
 /**
- * SkillsConstellation — the student "My Profile" view: the 16 MSHPL dimensions
- * as a slowly drifting star field on a nebula. Reads the SAME computed profile
- * as the radars (GET /student/skills-profile); does no maths of its own.
+ * SkillsConstellation — the student "My Profile" view: the MSHPL dimensions
+ * as a slowly drifting star field on a nebula. ACP shows all 20 HPL leaf
+ * characteristics (each inheriting its group's score); VAA shows its 11. Reads
+ * the SAME computed profile as the radars (GET /student/skills-profile); does
+ * no maths of its own.
  *
  * Mapping (feel, not precision — the radars are the precise view):
  *   - distance from centre, star size, and glow all scale with the 0–100 score
@@ -219,7 +221,9 @@ function SkillsConstellation({ profile, studentName }) {
 
     const root = new THREE.Group();
     scene.add(root);
-    const acp = profile.dimensions.filter((d) => d.group === 'ACP');
+    const acp = Array.isArray(profile.acp_leaves)
+      ? profile.acp_leaves
+      : profile.dimensions.filter((d) => d.group === 'ACP');
     const vaa = profile.dimensions.filter((d) => d.group === 'VAA');
     const twinkle = [];
     const nodePos = {};

@@ -3,6 +3,7 @@ import { teacher } from '../api/client';
 import { getUser, logout } from '../utils/auth';
 import AttachmentLink from './AttachmentLink';
 import SkillsRadar from './SkillsRadar';
+import SkillsDetailTable from './SkillsDetailTable';
 
 // Tolerant error-detail extractor: backend returns a string for legacy
 // handlers and a {code, message} dict for migrated handlers (Chunk 7).
@@ -509,10 +510,20 @@ function SkillsProfilePanel({ studentId }) {
       {loading && <div style={{ marginTop: 8, color: '#6d7f7a' }}>Loading…</div>}
       {error && <div className="error-message" style={{ marginTop: 8 }}>{error}</div>}
       {profile && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 12 }}>
-          <SkillsRadar title="How I Think" accent="#02664b" data={profile.dimensions.filter((d) => d.group === 'ACP')} />
-          <SkillsRadar title="Who I Am" accent="#0fb989" data={profile.dimensions.filter((d) => d.group === 'VAA')} />
-        </div>
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 12 }}>
+            <SkillsRadar title="How I Think" accent="#02664b" size={380} showValues={false} data={profile.acp_leaves} />
+            <SkillsRadar title="Who I Am" accent="#0fb989" showValues={false} data={profile.dimensions.filter((d) => d.group === 'VAA')} />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
+            <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+              <SkillsDetailTable title="How I Think — detail" rows={profile.acp_leaves} />
+            </div>
+            <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+              <SkillsDetailTable title="Who I Am — detail" groupLabel="Cluster" itemLabel="Attribute" rows={profile.dimensions.filter((d) => d.group === 'VAA')} />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -530,6 +541,8 @@ function TeacherDashboard() {
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentReport, setStudentReport] = useState(null);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const [reportError, setReportError] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Student Profiles tab — separate state from Student Reports so the two
@@ -587,16 +600,12 @@ function TeacherDashboard() {
 
   const loadStudents = async () => {
     try {
-      const response = await teacher.getSubmissions('all');
-      const uniqueStudents = [
-        ...new Map(
-          response.data.submissions.map((s) => [
-            s.student_id,
-            { id: s.student_id, name: s.student_name }
-          ])
-        ).values()
-      ];
-      setStudents(uniqueStudents);
+      const response = await teacher.getStudents();
+      const roster = (response.data.students || []).map((s) => ({
+        id: s.id,
+        name: s.full_name,
+      }));
+      setStudents(roster);
     } catch (error) {
       console.error('Failed to load students:', error);
     }
@@ -652,11 +661,33 @@ function TeacherDashboard() {
 
   const handleStudentSelect = async (studentId) => {
     setSelectedStudent(studentId);
+    setReportError('');
     try {
       const response = await teacher.getStudentReport(studentId);
       setStudentReport(response.data);
     } catch (error) {
       console.error('Failed to load student report:', error);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!selectedStudent) return;
+    setReportError('');
+    setDownloadingReport(true);
+    try {
+      const { blob, filename } = await teacher.downloadStudentReport(selectedStudent);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setReportError(extractErrorMessage(error, 'Could not generate the report PDF.'));
+    } finally {
+      setDownloadingReport(false);
     }
   };
 
@@ -827,7 +858,30 @@ function TeacherDashboard() {
 
             {studentReport && (
               <div className="card">
-                <h3>{studentReport.student_name}'s Progress Report</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0 }}>{studentReport.student_name}'s Progress Report</h3>
+                  <button
+                    onClick={handleDownloadReport}
+                    disabled={downloadingReport}
+                    style={{
+                      background: '#02664b',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '0 20px',
+                      minHeight: 44,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: downloadingReport ? 'default' : 'pointer',
+                      opacity: downloadingReport ? 0.7 : 1,
+                    }}
+                  >
+                    {downloadingReport ? 'Generating…' : 'Download PDF report'}
+                  </button>
+                </div>
+                {reportError && (
+                  <div className="error-message" style={{ marginTop: 10 }}>{reportError}</div>
+                )}
                 <div
                   style={{
                     textAlign: 'center',

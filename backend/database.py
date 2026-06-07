@@ -472,6 +472,11 @@ def init_database():
     # the activity model + categories exist. Idempotent (gated per file).
     seed_hussain_hero(conn)
 
+    # Demo communicator hero — a fully-approved, communication-strong student
+    # with a recorded Distinction, so the teacher report PDF has a complete
+    # subject to download. Idempotent; runs after the active objective set exists.
+    seed_communicator_hero(conn)
+
     conn.close()
 
 def hash_password(password: str) -> str:
@@ -1323,3 +1328,85 @@ def seed_hussain_hero(conn):
         conn.commit()
         print(f"✓ Hussain hero activities seeded ({seeded} file(s); "
               f"{skipped_missing} missing source(s) skipped)")
+
+
+def seed_communicator_hero(conn):
+    """Seed 'Salma Al-Otaibi' — a demo hero student who is strong on
+    communication, with the full mandatory diploma completed and teacher-
+    approved end to end, plus a recorded Distinction award. Gives the teacher
+    report PDF a complete, downloadable subject.
+
+    Communication maps to the Confident dimension (source-of-truth translation
+    layer: Communicator -> Confident). A top IELTS (9.0) drives Confident to its
+    rating ceiling, and all four Confident-feeding objectives (IELTS, Industry
+    Internship, Arabic Language, CMI Level 2) are approved, so Confident is the
+    standout skill while academics stay solid-but-not-stellar.
+
+    Idempotent and safe on every startup: the user is created once; progress is
+    INSERT OR IGNORE (UNIQUE student/objective); results are written only where
+    NULL; the award is inserted only if absent. Runs AFTER seed_data and the
+    objective restructure so the active objective set exists and existing student
+    ids are never disturbed.
+    """
+    cursor = conn.cursor()
+    username = "salma2026@miskschools.edu.sa"
+    full_name = "Salma Al-Otaibi"
+
+    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    if row is None:
+        cursor.execute(
+            "INSERT INTO users (username, email, password_hash, role, full_name, "
+            "student_year) VALUES (?, ?, ?, 'student', ?, 12)",
+            (username, username, hash_password("password123"), full_name),
+        )
+        student_id = cursor.lastrowid
+    else:
+        student_id = row['id']
+
+    # Approve every active mandatory objective (Grade 7->12 fully completed and
+    # teacher-approved). INSERT OR IGNORE is idempotent and never disturbs an
+    # existing row.
+    cursor.execute("SELECT id FROM objectives WHERE is_active = 1")
+    for obj in cursor.fetchall():
+        cursor.execute(
+            "INSERT OR IGNORE INTO student_objective_progress "
+            "(student_id, objective_id, current_points, completion_percentage, status) "
+            "VALUES (?, ?, 100, 100, 'approved')",
+            (student_id, obj['id']),
+        )
+
+    # Results — communication-leaning: a top IELTS, solid academics, so Confident
+    # is the clear peak. Written only where NULL (never overwrites a teacher).
+    results = {
+        "IELTS":   ("9.0", 1),
+        "IGCSE":   (json.dumps(["A", "A", "B", "B", "C"]), 1),
+        "IAL":     (json.dumps(["A", "B", "B"]), 1),
+        "Qudurat": ("80.0", 1),
+        "Tahsili": ("78.0", 1),
+    }
+    for r_title, (r_value, r_attempts) in results.items():
+        cursor.execute(
+            """UPDATE student_objective_progress
+               SET result_value = ?, attempts = ?
+               WHERE student_id = ? AND result_value IS NULL
+                 AND objective_id = (SELECT id FROM objectives WHERE title = ?)""",
+            (r_value, r_attempts, student_id, r_title),
+        )
+
+    # Record the manual diploma award (Distinction) if none exists yet.
+    cursor.execute("SELECT id FROM diploma_awards WHERE student_id = ?", (student_id,))
+    if cursor.fetchone() is None:
+        cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 1")
+        t_row = cursor.fetchone()
+        teacher_id = t_row['id'] if t_row is not None else None
+        cursor.execute(
+            "INSERT INTO diploma_awards "
+            "(student_id, eligible_for_diploma, award_level, selected_by, selected_at, notes) "
+            "VALUES (?, 1, 'Distinction', ?, ?, ?)",
+            (student_id, teacher_id, datetime.utcnow().isoformat(),
+             "Exemplary communicator; outstanding across the mandatory diploma."),
+        )
+
+    conn.commit()
+    print("\u2713 Communicator hero (Salma Al-Otaibi) seeded.")
