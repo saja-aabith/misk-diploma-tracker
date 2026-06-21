@@ -1,33 +1,50 @@
-# Misk Skills Profile engine (Chunk 33; ACP leaf view added Chunk 34).
+# Misk Skills Profile engine.
 #
-# Computes the MSHPL skills profile ON READ from existing tables
-# (student_objective_progress + objectives) — nothing is stored. This is a
-# deliberate choice: live calculation is always correct (no cache to go stale
-# when a result is entered or an objective approved) and trivially cheap at
-# MVP scale. A separate, append-only snapshots table is a POST-MVP item for
-# trajectory history; this module does not write anything.
+# Computes the MSHPL skills profile ON READ from existing tables — nothing is
+# stored. Live calculation is always correct (no cache to go stale) and trivially
+# cheap at MVP scale.
 #
-# The profile is SEPARATE from the formal diploma award (which is manual and
-# never computed). See misk_source_of_truth.md sections 7-13 for the agreed
-# model; the exact Breadth/Quality/Consistency formulas and the constants
-# below were signed off in the Chunk-33 formula spec.
+# Sources of evidence (pooled per dimension):
+#   1. Approved mandatory objectives (student_objective_progress + objectives),
+#      mapped to the 5 ACP GROUPS / 11 VAA dimensions via OBJECTIVE_MAP. Result-
+#      based academics performance-scale (1 + 2p); pass/fail contribute the fixed
+#      default rating.
+#   2. Approved Misk Core skill ratings (core_skill_ratings), teacher-levelled
+#      (Emerging 1 / Evident 2 / Embedded 3), tagged at the LEAF level (20 ACP
+#      leaves) or VAA dimension.
+#
+# Scoring (per dimension, 0-100), with the profile-wide growth curve:
+#   Quality      Q = mean(ratings) / 3
+#   Consistency  C = share(ratings >= 2) / count           (>= the diploma floor)
+#   Breadth      B = n / (n + BREADTH_K)   n = distinct sources (mandatory + Core)
+#   Score        = round(100 * (0.40*B + 0.30*Q + 0.30*C))
+# B saturates and never reaches 1, so NO dimension ever reaches 100 (growth
+# mindset: always headroom). Every approved activity counts; farming dies
+# naturally because each extra source closes only a fraction of the remaining gap.
+#
+# ACP is leaf-level: each of the 20 leaves pools its parent GROUP's mandatory
+# ratings (shared) PLUS that leaf's own Core ratings, so a leaf with strong Core
+# evidence rises above its siblings. An ACP group's score is the MEAN of its
+# leaves. acp_average = mean of the 20 leaves; vaa_average = mean of the 11;
+# overall_average = mean of all 31.
+#
+# The profile is SEPARATE from the formal diploma award (manual, never computed).
 
 import json
+import sqlite3
 
 # ---------------------------------------------------------------------------
-# The 16 MSHPL dimensions, in their two display groups (the two radars).
+# Dimensions.
 # ---------------------------------------------------------------------------
 ACP_DIMENSIONS = [
     "Meta-Thinking", "Linking", "Analysing", "Creating", "Realising",
 ]
 
-# The 20 HPL ACP leaf characteristics under their 5 group headings (verbatim
-# from the MISK/HPL ACP progression poster). These drive the LEAF-LEVEL display
-# only (constellation stars + the grouped "How I Think — detail" list). Scoring
-# still happens at the 5 group level via OBJECTIVE_MAP; each leaf INHERITS its
-# parent group's computed score and counts (decision: inheritance, Chunk 34).
-# Until Gemini-rated Core activities arrive to differentiate them, a covered
-# group's leaves read alike — that is intended. Keys MUST match ACP_DIMENSIONS.
+# The 20 HPL ACP leaf characteristics under their 5 group headings (verbatim from
+# the MISK/HPL ACP progression poster). Leaves are scored individually: they
+# share their parent group's mandatory ratings, but each carries its own Core
+# ratings, so leaves can diverge once Core evidence exists. Keys MUST match
+# ACP_DIMENSIONS.
 ACP_LEAVES = {
     "Meta-Thinking": [
         "Meta-cognition", "Self-regulation", "Strategy-planning",
@@ -55,33 +72,31 @@ VAA_DIMENSIONS = [
     "Perseverance", "Resilience", "Digital Thinker",
 ]
 
-# The 11 VAA dimensions under their HPL behavioural clusters (verbatim from the
-# MISK/HPL VAA progression poster), plus Digital Thinker as the MISK extension.
-# Display grouping only (the "Who I Am — detail" table); scoring is unaffected.
-# Keys' union MUST equal VAA_DIMENSIONS.
+# The 11 VAA dimensions under their HPL behavioural clusters (+ Digital Thinker as
+# the MISK extension). Display grouping only. Union MUST equal VAA_DIMENSIONS.
 VAA_CLUSTERS = {
     "Empathetic": ["Collaborative", "Concerned for Society", "Confident"],
     "Agile": ["Enquiring", "Creative & Enterprising", "Open-Minded", "Risk-Taking"],
     "Hard Working": ["Practice", "Perseverance", "Resilience"],
     "Digital Thinker": ["Digital Thinker"],
 }
-ALL_DIMENSIONS = ACP_DIMENSIONS + VAA_DIMENSIONS
-_GROUP_OF = {d: "ACP" for d in ACP_DIMENSIONS}
-_GROUP_OF.update({d: "VAA" for d in VAA_DIMENSIONS})
 
-# Display category for each dimension in `dimensions`: VAA dimensions carry
-# their HPL cluster; the 5 ACP group rows carry None (their leaf breakdown and
-# per-leaf categories live in `acp_leaves`).
+# Flat allow-list of every valid stored dimension string (20 ACP leaves + 11 VAA).
+# Core ratings MUST validate against this on write.
+ALL_LEAF_DIMENSIONS = [leaf for g in ACP_DIMENSIONS for leaf in ACP_LEAVES[g]] + VAA_DIMENSIONS
+
+_GROUP_OF = {d: "VAA" for d in VAA_DIMENSIONS}
 _CATEGORY_OF = {}
 for _cluster, _cluster_dims in VAA_CLUSTERS.items():
     for _cd in _cluster_dims:
         _CATEGORY_OF[_cd] = _cluster
+_LEAF_PARENT = {leaf: g for g in ACP_DIMENSIONS for leaf in ACP_LEAVES[g]}
 
 # ---------------------------------------------------------------------------
-# Objective -> dimension map (source-of-truth section 11), keyed by the exact
-# objectives.title strings. "result" objectives performance-scale their listed
-# dimensions via 1 + 2p; "passfail" objectives write the fixed default rating.
-# Dimensions not listed for an objective receive no mandatory credit from it.
+# Objective -> (group/VAA dimension) map, keyed by exact objectives.title.
+# "result" objectives performance-scale via 1 + 2p; "passfail" contribute the
+# fixed default. ACP entries are the 5 GROUP names (leaves inherit the group's
+# mandatory ratings).
 # ---------------------------------------------------------------------------
 OBJECTIVE_MAP = {
     "IELTS":               (["Confident"], "result"),
@@ -97,30 +112,26 @@ OBJECTIVE_MAP = {
     "CMI Level 2":         (["Collaborative", "Confident", "Meta-Thinking"], "passfail"),
 }
 
-# How many mandatory objectives COULD evidence each dimension — the denominator
-# for relative Breadth. Derived from OBJECTIVE_MAP so it can never drift from it.
-POSSIBLE_SOURCES = {d: 0 for d in ALL_DIMENSIONS}
-for _title, (_dims, _kind) in OBJECTIVE_MAP.items():
-    for _d in _dims:
-        POSSIBLE_SOURCES[_d] += 1
-
 # ---------------------------------------------------------------------------
 # Signed-off constants.
 # ---------------------------------------------------------------------------
 DEFAULT_RATING = 2.0          # pass/fail (and approved-but-no-result) rating
 RATING_MAX = 3.0              # intrinsic rating ceiling (1 + 2*1)
-CONSISTENCY_BAR = 2.0         # "solid pass" bar for the consistency proportion
+CONSISTENCY_BAR = 2.0         # the diploma floor ("Evident")
 W_BREADTH = 0.40
 W_QUALITY = 0.30
 W_CONSISTENCY = 0.30
-CORE_CAP_POINTS = 30.0        # max points Misk Core may add to a dimension.
-                              # Inert in the MVP (no Core ratings exist yet).
+# Growth curve: B = n / (n + BREADTH_K). Higher K => growth is harder / ceiling
+# feels further. Tunable governance dial; never lets B (or the score) reach the
+# top. Signed off at K=3 (the 80s are the realistic top; 90s rare and hard-earned;
+# 100 unreachable, profile-wide).
+BREADTH_K = 3.0
 
-# Grade -> points (source-of-truth section 12).
+# Grade -> points.
 IGCSE_POINTS = {"U": 0, "G": 1, "F": 2, "E": 3, "D": 4, "C": 5, "B": 6, "A": 7, "A*": 9}
 IAL_POINTS = {"U": 0, "E": 1, "D": 2, "C": 3, "B": 4, "A": 5, "A*": 6}
-IGCSE_FLOOR, IGCSE_PER_SUBJECT_MAX = 3, 6   # A*(9) - floor(3) = 6
-IAL_FLOOR, IAL_PER_SUBJECT_MAX = 1, 5       # A*(6) - floor(1) = 5
+IGCSE_FLOOR, IGCSE_PER_SUBJECT_MAX = 3, 6
+IAL_FLOOR, IAL_PER_SUBJECT_MAX = 1, 5
 
 RESULT_BASED_TITLES = {"IELTS", "IGCSE", "IAL", "Qudurat", "Tahsili"}
 MAX_ATTEMPTS = {"Qudurat": 5, "Tahsili": 2}
@@ -132,14 +143,7 @@ def _clamp(x, lo=0.0, hi=1.0):
 
 def _performance_ratio(title, result_value):
     """Performance ratio p in [0,1] for a result-based objective, or None if no
-    usable numeric result is present (caller falls back to the default rating).
-
-    result_value is the string stored by the result-capture endpoint: a numeric
-    string for IELTS/Qudurat/Tahsili, or a JSON array of grade tokens for
-    IGCSE/IAL. Denominators for IGCSE/IAL scale to the student's actual subject
-    count; each subject contributes max(0, points - floor) so a sub-floor grade
-    adds nothing rather than going negative.
-    """
+    usable numeric result is present (caller falls back to the default rating)."""
     if result_value is None or result_value == "":
         return None
     try:
@@ -168,21 +172,12 @@ def _performance_ratio(title, result_value):
 
 
 def _rating_for(title, dim, kind, result_value, attempts):
-    """The 0-3 rating a single approved objective contributes to one dimension.
-
-    - pass/fail objective -> DEFAULT_RATING.
-    - result-based objective -> 1 + 2p (clamped to [1,3]); for Resilience on
-      Qudurat/Tahsili, plus the attempt bonus, combined rating capped at 3.
-    - result-based but no usable numeric result yet -> DEFAULT_RATING
-      (participation credit, no performance scaling).
-    """
+    """The 0-3 rating a single approved mandatory objective contributes."""
     if kind == "passfail":
         return DEFAULT_RATING
-
     p = _performance_ratio(title, result_value)
     if p is None:
         return DEFAULT_RATING
-
     base = _clamp(1.0 + 2.0 * p, 1.0, 3.0)
     if dim == "Resilience" and title in MAX_ATTEMPTS:
         max_att = MAX_ATTEMPTS[title]
@@ -192,112 +187,132 @@ def _rating_for(title, dim, kind, result_value, attempts):
     return base
 
 
-def _year_of(updated_at):
-    """Best-effort calendar year from a stored timestamp string, else None."""
-    if not updated_at:
+def _year_of(stamp):
+    """Best-effort calendar year from a stored timestamp/date string, else None."""
+    if not stamp:
         return None
-    s = str(updated_at)
+    s = str(stamp)
     return s[:4] if len(s) >= 4 and s[:4].isdigit() else None
 
 
-def compute_skills_profile(cursor, student_id):
-    """Compute the full 16-dimension skills profile for one student.
+def _score_pool(ratings, n_sources):
+    """Score one dimension (0-100) from its pooled 0-3 ratings and distinct source
+    count, using the growth curve B = n/(n+BREADTH_K). Returns (score, status)."""
+    if not ratings or n_sources <= 0:
+        return 0, "no_evidence"
+    quality = (sum(ratings) / len(ratings)) / RATING_MAX
+    consistency = sum(1 for r in ratings if r >= CONSISTENCY_BAR) / len(ratings)
+    breadth = n_sources / (n_sources + BREADTH_K)
+    score = round(100.0 * (W_BREADTH * breadth + W_QUALITY * quality + W_CONSISTENCY * consistency))
+    return score, "scored"
 
-    Pure read: queries approved progress rows + objectives and applies the
-    signed-off formulas. Returns a dict ready to serialise; never writes.
+
+def _entry(dimension, group, category, mand_list, core_list):
+    """Build one dimension/leaf entry from its mandatory ratings (rating, title,
+    year) and Core ratings (level, activity_id, year)."""
+    ratings = [m[0] for m in mand_list] + [c[0] for c in core_list]
+    sources = {("m", m[1]) for m in mand_list} | {("c", c[1]) for c in core_list}
+    years = {m[2] for m in mand_list if m[2]} | {c[2] for c in core_list if c[2]}
+    score, status = _score_pool(ratings, len(sources))
+    return {
+        "dimension": dimension, "group": group, "category": category,
+        "score": score, "status": status,
+        "evidence_count": len(ratings), "activity_count": len(sources),
+        "core_count": len(core_list), "year_count": len(years),
+    }
+
+
+def compute_skills_profile(cursor, student_id):
+    """Compute the full skills profile for one student. Pure read; never writes.
+
+    Returns { student_id, dimensions (5 ACP groups + 11 VAA), acp_leaves (20),
+    acp_average, vaa_average, overall_average }.
     """
+    # --- 1. Mandatory ratings, keyed by the 5 ACP GROUPS + 11 VAA dims ---
     cursor.execute(
         """
-        SELECT o.title AS title, sop.status AS status,
-               sop.result_value AS result_value, sop.attempts AS attempts,
-               sop.updated_at AS updated_at
+        SELECT o.title AS title, sop.result_value AS result_value,
+               sop.attempts AS attempts, sop.updated_at AS updated_at
         FROM student_objective_progress sop
         JOIN objectives o ON o.id = sop.objective_id
         WHERE sop.student_id = ? AND o.is_active = 1 AND sop.status = 'approved'
         """,
         (student_id,),
     )
-    approved = [dict(r) for r in cursor.fetchall()]
-
-    # Gather contributing ratings per dimension.
-    per_dim = {d: [] for d in ALL_DIMENSIONS}  # list of (rating, source_title, year)
-    for row in approved:
-        title = row["title"]
-        mapping = OBJECTIVE_MAP.get(title)
+    mand = {d: [] for d in (ACP_DIMENSIONS + VAA_DIMENSIONS)}  # (rating, title, year)
+    for row in (dict(r) for r in cursor.fetchall()):
+        mapping = OBJECTIVE_MAP.get(row["title"])
         if mapping is None:
-            continue  # objective not part of the mandatory skills map
+            continue
         dims, kind = mapping
         year = _year_of(row["updated_at"])
         for d in dims:
-            rating = _rating_for(title, d, kind, row["result_value"], row["attempts"])
-            per_dim[d].append((rating, title, year))
+            rating = _rating_for(row["title"], d, kind, row["result_value"], row["attempts"])
+            mand[d].append((rating, row["title"], year))
 
-    dimensions = []
-    for d in ALL_DIMENSIONS:
-        entries = per_dim[d]
-        if not entries:
-            dimensions.append({
-                "dimension": d, "group": _GROUP_OF[d], "category": _CATEGORY_OF.get(d),
-                "score": 0,
-                "evidence_count": 0, "activity_count": 0, "year_count": 0,
-                "status": "no_evidence",
-            })
-            continue
-
-        ratings = [e[0] for e in entries]
-        sources = {e[1] for e in entries}
-        years = {e[2] for e in entries if e[2] is not None}
-
-        quality = (sum(ratings) / len(ratings)) / RATING_MAX
-        consistency = sum(1 for r in ratings if r >= CONSISTENCY_BAR) / len(ratings)
-        possible = POSSIBLE_SOURCES[d] or len(sources)
-        breadth = _clamp(len(sources) / possible)
-
-        score_mandatory = 100.0 * (
-            W_BREADTH * breadth + W_QUALITY * quality + W_CONSISTENCY * consistency
+    # --- 2. Approved Core ratings, keyed by leaf / VAA dimension ---
+    core = {}  # dimension -> list of (level, activity_id, year)
+    try:
+        cursor.execute(
+            """
+            SELECT csr.dimension AS dimension, csr.level AS level,
+                   csr.activity_id AS activity_id, sa.activity_date AS activity_date
+            FROM core_skill_ratings csr
+            LEFT JOIN student_activities sa ON sa.id = csr.activity_id
+            WHERE csr.student_id = ? AND csr.status = 'approved' AND csr.level >= 1
+            """,
+            (student_id,),
         )
-        # Core uplift is 0 in the MVP (no Core ratings yet); the cap is wired
-        # so enabling Gemini-rated Core activities later just engages it.
-        core_uplift = 0.0
-        final = _clamp(score_mandatory + min(CORE_CAP_POINTS, core_uplift), 0.0, 100.0)
+        for r in (dict(x) for x in cursor.fetchall()):
+            core.setdefault(r["dimension"], []).append(
+                (float(r["level"]), r["activity_id"], _year_of(r["activity_date"]))
+            )
+    except sqlite3.OperationalError:
+        pass  # core_skill_ratings not migrated yet -> no Core contribution
 
-        dimensions.append({
-            "dimension": d, "group": _GROUP_OF[d], "category": _CATEGORY_OF.get(d),
-            "score": round(final),
-            "evidence_count": len(ratings), "activity_count": len(sources),
-            "year_count": len(years), "status": "scored",
-        })
+    # --- 3. VAA dimensions (flat: own mandatory + own Core) ---
+    vaa_entries = [
+        _entry(d, "VAA", _CATEGORY_OF.get(d), mand[d], core.get(d, []))
+        for d in VAA_DIMENSIONS
+    ]
 
-    # Leaf-level ACP view: each of the 20 HPL leaves inherits the score and
-    # evidence counts of its parent group (decision: inheritance). This drives
-    # the constellation and the grouped leaf list ONLY; `dimensions` (the 5 ACP
-    # groups + 11 VAA) and every average below are computed exactly as before,
-    # so the verified group-level profile is unaffected.
-    by_dim = {x["dimension"]: x for x in dimensions}
+    # --- 4. ACP leaves: parent group's mandatory ratings + leaf's own Core ---
     acp_leaves = []
     for group in ACP_DIMENSIONS:
-        parent = by_dim[group]
         for leaf in ACP_LEAVES[group]:
-            acp_leaves.append({
-                "dimension": leaf,
-                "group": "ACP",
-                "category": group,
-                "score": parent["score"],
-                "evidence_count": parent["evidence_count"],
-                "activity_count": parent["activity_count"],
-                "year_count": parent["year_count"],
-                "status": parent["status"],
-            })
+            acp_leaves.append(
+                _entry(leaf, "ACP", group, mand[group], core.get(leaf, []))
+            )
 
-    def _avg(group):
-        vals = [x["score"] for x in dimensions if x["group"] == group]
+    # --- 5. ACP group rows = MEAN of their leaves (score); pooled counts ---
+    acp_groups = []
+    for group in ACP_DIMENSIONS:
+        leaves = [e for e in acp_leaves if e["category"] == group]
+        gcore = [c for leaf in ACP_LEAVES[group] for c in core.get(leaf, [])]
+        gratings = [m[0] for m in mand[group]] + [c[0] for c in gcore]
+        gsources = {("m", m[1]) for m in mand[group]} | {("c", c[1]) for c in gcore}
+        gyears = {m[2] for m in mand[group] if m[2]} | {c[2] for c in gcore if c[2]}
+        gscore = round(sum(l["score"] for l in leaves) / len(leaves)) if leaves else 0
+        gstatus = "scored" if any(l["status"] == "scored" for l in leaves) else "no_evidence"
+        acp_groups.append({
+            "dimension": group, "group": "ACP", "category": None,
+            "score": gscore, "status": gstatus,
+            "evidence_count": len(gratings), "activity_count": len(gsources),
+            "core_count": len(gcore), "year_count": len(gyears),
+        })
+
+    dimensions = acp_groups + vaa_entries  # 5 + 11 (payload shape unchanged)
+
+    def _mean(vals):
         return round(sum(vals) / len(vals), 1) if vals else 0.0
 
+    leaf_scores = [e["score"] for e in acp_leaves]
+    vaa_scores = [e["score"] for e in vaa_entries]
     return {
         "student_id": student_id,
         "dimensions": dimensions,
         "acp_leaves": acp_leaves,
-        "acp_average": _avg("ACP"),
-        "vaa_average": _avg("VAA"),
-        "overall_average": round(sum(x["score"] for x in dimensions) / len(dimensions), 1),
+        "acp_average": _mean(leaf_scores),                 # mean of the 20 leaves
+        "vaa_average": _mean(vaa_scores),                  # mean of the 11 VAA
+        "overall_average": _mean(leaf_scores + vaa_scores),  # mean of all 31
     }

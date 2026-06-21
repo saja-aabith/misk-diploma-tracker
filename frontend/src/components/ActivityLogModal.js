@@ -18,6 +18,8 @@ const TAG_MAX_LEN = 32;
 const MAX_TAGS = 10;
 const TITLE_MAX_LEN = 200;
 const DESCRIPTION_MAX_LEN = 4000;
+const MAX_SKILLS = 3;
+const JUSTIFICATION_MAX_LEN = 2000;
 
 // Today in ISO YYYY-MM-DD, used as the date input's default and `max`
 // attribute. Backend rejects future dates anyway (Chunk 6 schema), but
@@ -86,8 +88,45 @@ function ActivityLogModal({ onClose, onSuccess }) {
   const [tagsInput, setTagsInput] = useState('');
   const [file, setFile] = useState(null);
 
+  // Misk Core skill claims: up to MAX_SKILLS of the 31 dimensions, each with a
+  // justification. Loaded grouped from the backend so the locked dimension
+  // strings are never hardcoded here.
+  const [skillGroups, setSkillGroups] = useState({ acp: [], vaa: [] });
+  const [selectedSkills, setSelectedSkills] = useState([]); // [{ dimension, justification }]
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    student
+      .getSkillDimensions()
+      .then((res) => {
+        if (cancelled) return;
+        setSkillGroups({ acp: res?.data?.acp || [], vaa: res?.data?.vaa || [] });
+      })
+      .catch(() => {
+        // Non-fatal: skill tagging is optional; the rest of the form still works.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isSkillSelected = (dim) => selectedSkills.some((s) => s.dimension === dim);
+  const toggleSkill = (dim) => {
+    setError('');
+    setSelectedSkills((prev) => {
+      if (prev.some((s) => s.dimension === dim)) {
+        return prev.filter((s) => s.dimension !== dim);
+      }
+      if (prev.length >= MAX_SKILLS) return prev; // cap at MAX_SKILLS
+      return [...prev, { dimension: dim, justification: '' }];
+    });
+  };
+  const setJustification = (dim, text) =>
+    setSelectedSkills((prev) =>
+      prev.map((s) => (s.dimension === dim ? { ...s, justification: text } : s)));
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +187,14 @@ function ActivityLogModal({ onClose, onSuccess }) {
       return;
     }
 
+    // Each selected skill needs a justification (backend enforces this too).
+    for (const s of selectedSkills) {
+      if (!s.justification.trim()) {
+        setError(`Add a justification for "${s.dimension}".`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setError('');
 
@@ -158,6 +205,10 @@ function ActivityLogModal({ onClose, onSuccess }) {
         description: trimmedDescription || null,
         activityDate,
         tags,
+        skills: selectedSkills.map((s) => ({
+          dimension: s.dimension,
+          justification: s.justification.trim(),
+        })),
         file: file || null,
       });
       onSuccess(res?.data);
@@ -246,6 +297,74 @@ function ActivityLogModal({ onClose, onSuccess }) {
             <small style={{ color: '#7f8c8d' }}>
               Comma-separated. Up to {MAX_TAGS} tags, each up to {TAG_MAX_LEN} characters.
             </small>
+          </div>
+
+          <div className="form-group">
+            <label>Skills this evidences (max {MAX_SKILLS}) — Optional</label>
+            <small style={{ color: '#7f8c8d', display: 'block', marginBottom: 6 }}>
+              Tag up to {MAX_SKILLS} skills this activity demonstrates and say why.
+              A teacher reviews each. {selectedSkills.length}/{MAX_SKILLS} selected.
+            </small>
+            <div
+              style={{
+                maxHeight: 200,
+                overflowY: 'auto',
+                border: '1px solid #e1e8e5',
+                borderRadius: 6,
+                padding: 8,
+              }}
+            >
+              {[
+                ...skillGroups.acp.map((g) => ({ label: g.group, dims: g.leaves })),
+                ...skillGroups.vaa.map((c) => ({ label: c.cluster, dims: c.dimensions })),
+              ].map((grp) => (
+                <div key={grp.label} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#02664b' }}>
+                    {grp.label}
+                  </div>
+                  {grp.dims.map((dim) => {
+                    const checked = isSkillSelected(dim);
+                    const capped = !checked && selectedSkills.length >= MAX_SKILLS;
+                    return (
+                      <label
+                        key={dim}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 13,
+                          color: capped ? '#aab2ae' : '#334',
+                          padding: '1px 0',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={submitting || capped}
+                          onChange={() => toggleSkill(dim)}
+                        />
+                        {dim}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            {selectedSkills.map((s) => (
+              <div key={s.dimension} style={{ marginTop: 8 }}>
+                <label style={{ fontSize: 12, fontWeight: 700 }}>
+                  Why does this show “{s.dimension}”?
+                </label>
+                <textarea
+                  value={s.justification}
+                  onChange={(e) => setJustification(s.dimension, e.target.value)}
+                  placeholder="Explain how this activity demonstrates this skill…"
+                  maxLength={JUSTIFICATION_MAX_LEN}
+                  disabled={submitting}
+                  style={{ width: '100%', minHeight: 48 }}
+                />
+              </div>
+            ))}
           </div>
 
           <div className="form-group">

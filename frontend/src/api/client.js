@@ -97,6 +97,7 @@ export const student = {
     description = null,
     activityDate,
     tags = [],
+    skills = [],
     file = null,
   }) => {
     const formData = new FormData();
@@ -107,6 +108,8 @@ export const student = {
     }
     formData.append('activity_date', activityDate);
     formData.append('tags', JSON.stringify(Array.isArray(tags) ? tags : []));
+    // Up to 3 { dimension, justification } skill claims; backend validates.
+    formData.append('skills', JSON.stringify(Array.isArray(skills) ? skills : []));
     if (file) {
       formData.append('file', file);
     }
@@ -114,6 +117,10 @@ export const student = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  // GET /student/skill-dimensions — grouped 31 dimensions for the skill picker.
+  // Returns { acp: [{group, leaves[]}], vaa: [{cluster, dimensions[]}] }.
+  getSkillDimensions: () => apiClient.get('/student/skill-dimensions'),
 
   // GET /student/activities
   // { categoryId?: number, limit?: number }
@@ -225,14 +232,17 @@ export const teacher = {
   getActivitiesForReview: (status = 'pending_review') =>
     apiClient.get('/teacher/activities', { params: { status } }),
 
-  // POST /teacher/activity-review — Chunk 32
+  // POST /teacher/activity-review — Chunk 32 (+ per-claim skill levels)
   // Approve or reject a Misk Core activity. decision is 'approved' or
   // 'rejected'; feedback is optional and surfaced back to the student.
-  reviewActivity: ({ activityId, decision, feedback }) =>
+  // skillLevels is an array of { rating_id, level } (0=Not evident .. 3=Embedded)
+  // applied to the activity's skill claims on approval.
+  reviewActivity: ({ activityId, decision, feedback, skillLevels = [] }) =>
     apiClient.post('/teacher/activity-review', {
       activity_id: activityId,
       decision,
       feedback: feedback ?? null,
+      skill_levels: Array.isArray(skillLevels) ? skillLevels : [],
     }),
 
   // GET /teacher/skills-profile/{studentId} — Chunk 33

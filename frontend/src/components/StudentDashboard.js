@@ -11,6 +11,9 @@ import AttachmentLink from './AttachmentLink';
 import JourneyTimeline from './JourneyTimeline';
 import DiplomaIdentityPanel from './DiplomaIdentityPanel';
 
+// Misk Core skill levels (0–3) -> student-facing label, for activity claims.
+const CORE_LEVEL_LABELS = { 0: 'Not evident', 1: 'Emerging', 2: 'Evident', 3: 'Embedded' };
+
 /**
  * Helper: clamp any % between 0 and 100
  */
@@ -123,6 +126,43 @@ function StudentDashboard() {
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [skillsProfile, setSkillsProfile] = useState(null);
 
+  // Misk Core tab badge: count of activities reviewed (approved/rejected) since
+  // the student last opened the tab. Derived client-side from the activity list
+  // + a localStorage "seen" marker; no email/push, no backend.
+  const [seenReviewIds, setSeenReviewIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('misk_miskcore_seen_reviews');
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Mark reviewed activities as "seen" while the Misk Core tab is open.
+  useEffect(() => {
+    if (activeTab !== 'miskcore') return;
+    const reviewedIds = activities
+      .filter((a) => a.status === 'approved' || a.status === 'rejected')
+      .map((a) => a.id);
+    if (reviewedIds.length === 0) return;
+    setSeenReviewIds((prev) => {
+      const merged = Array.from(new Set([...prev, ...reviewedIds]));
+      if (merged.length === prev.length) return prev;
+      try {
+        localStorage.setItem('misk_miskcore_seen_reviews', JSON.stringify(merged));
+      } catch {
+        /* ignore storage errors */
+      }
+      return merged;
+    });
+  }, [activeTab, activities]);
+
+  const unseenReviewedCount = activities.filter(
+    (a) =>
+      (a.status === 'approved' || a.status === 'rejected') &&
+      !seenReviewIds.includes(a.id),
+  ).length;
   // Ref to the objectives panel. Used to scroll the panel into view when a
   // quadrant is selected — both from a PillarProgressCard click and from the
   // Misk Core center click on the circle. The objectives panel only renders
@@ -352,6 +392,23 @@ function StudentDashboard() {
             onClick={() => setActiveTab('miskcore')}
           >
             Misk Core
+            {unseenReviewedCount > 0 && (
+              <span
+                title={`${unseenReviewedCount} activity(ies) reviewed`}
+                style={{
+                  marginLeft: 6,
+                  background: '#E74C3C',
+                  color: '#fff',
+                  borderRadius: 10,
+                  padding: '0 7px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  verticalAlign: 'middle',
+                }}
+              >
+                {unseenReviewedCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -577,6 +634,28 @@ function StudentDashboard() {
 
                   {activity.tags && activity.tags.length > 0 && (
                     <div className="submission-meta">Tags: {activity.tags.join(', ')}</div>
+                  )}
+
+                  {Array.isArray(activity.skills) && activity.skills.length > 0 && (
+                    <div className="submission-meta" style={{ marginTop: 4 }}>
+                      Skills:{' '}
+                      {activity.skills.map((s, i) => (
+                        <span key={s.id}>
+                          {i > 0 && ', '}
+                          {s.dimension}
+                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+                            {' '}
+                            (
+                            {s.status === 'pending_review'
+                              ? 'pending review'
+                              : s.status === 'rejected'
+                              ? 'Not evident'
+                              : CORE_LEVEL_LABELS[s.level] || 'reviewed'}
+                            )
+                          </span>
+                        </span>
+                      ))}
+                    </div>
                   )}
 
                   {activity.stored_filename && (

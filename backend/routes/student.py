@@ -20,7 +20,13 @@ from fastapi import (
 from pydantic import ValidationError
 
 from database import get_db
-from skills import compute_skills_profile
+from skills import (
+    compute_skills_profile,
+    ACP_DIMENSIONS,
+    ACP_LEAVES,
+    VAA_CLUSTERS,
+    ALL_LEAF_DIMENSIONS,
+)
 from models import (
     ObjectiveProgress,
     QuadrantSummary,
@@ -534,9 +540,86 @@ async def get_activity_categories(
     return {"categories": categories}
 
 
+@router.get("/skill-dimensions")
+async def get_skill_dimensions(
+    current_user: dict = Depends(get_current_student),
+):
+    """The 31 skill dimensions a Misk Core activity may be tagged against,
+    grouped for the picker: 20 ACP leaves under their 5 groups, 11 VAA under
+    their HPL clusters. Single source of truth for the locked dimension strings
+    (incl. VAA key casing), so the frontend never hardcodes them."""
+    return {
+        "acp": [{"group": g, "leaves": list(ACP_LEAVES[g])} for g in ACP_DIMENSIONS],
+        "vaa": [{"cluster": c, "dimensions": list(dims)}
+                for c, dims in VAA_CLUSTERS.items()],
+    }
+
+
 # ============================================================
 # Misk Core — log a new activity (LEGACY: see Chunk 21 note in database.py)
 # ============================================================
+
+# Misk Core skill claims: a student may tag up to this many of the 31 skill
+# dimensions (20 ACP leaves + 11 VAA) per activity, each with a written
+# justification. Claims are created at 'pending_review' (level NULL); the
+# teacher rejects or levels each on review. Validated here against the locked
+# 31-dimension allow-list so an unknown/mis-cased dimension never reaches the DB.
+MAX_SKILLS_PER_ACTIVITY = 3
+JUSTIFICATION_MAX_LEN = 2000
+
+
+def _parse_activity_skills(raw):
+    """Parse and validate the JSON `skills` form field into a clean list of
+    {dimension, justification}. Raises HTTPException(400) on any problem.
+    Empty/absent -> []."""
+    raw = (raw or "").strip()
+    if not raw or raw == "[]":
+        return []
+    try:
+        items = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail={
+            "code": "ACTIVITY_SKILLS_INVALID_JSON",
+            "message": "skills must be a JSON-encoded array."})
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail={
+            "code": "ACTIVITY_SKILLS_INVALID_JSON",
+            "message": "skills must be a JSON array."})
+    if len(items) > MAX_SKILLS_PER_ACTIVITY:
+        raise HTTPException(status_code=400, detail={
+            "code": "ACTIVITY_SKILLS_TOO_MANY",
+            "message": f"Select at most {MAX_SKILLS_PER_ACTIVITY} skills per activity."})
+
+    cleaned = []
+    seen = set()
+    for it in items:
+        if not isinstance(it, dict):
+            raise HTTPException(status_code=400, detail={
+                "code": "ACTIVITY_SKILLS_MALFORMED",
+                "message": "Each skill must be an object with dimension and justification."})
+        dimension = (it.get("dimension") or "").strip()
+        justification = (it.get("justification") or "").strip()
+        if dimension not in ALL_LEAF_DIMENSIONS:
+            raise HTTPException(status_code=400, detail={
+                "code": "ACTIVITY_SKILL_DIMENSION_UNKNOWN",
+                "message": f"Unknown skill dimension: {dimension!r}."})
+        if dimension in seen:
+            raise HTTPException(status_code=400, detail={
+                "code": "ACTIVITY_SKILL_DUPLICATE",
+                "message": f"Skill {dimension!r} selected more than once."})
+        if not justification:
+            raise HTTPException(status_code=400, detail={
+                "code": "ACTIVITY_SKILL_JUSTIFICATION_REQUIRED",
+                "message": f"A justification is required for {dimension!r}."})
+        if len(justification) > JUSTIFICATION_MAX_LEN:
+            raise HTTPException(status_code=400, detail={
+                "code": "ACTIVITY_SKILL_JUSTIFICATION_TOO_LONG",
+                "message": f"Justification for {dimension!r} is too long "
+                           f"(max {JUSTIFICATION_MAX_LEN} characters)."})
+        seen.add(dimension)
+        cleaned.append({"dimension": dimension, "justification": justification})
+    return cleaned
+
 
 @router.post("/activities", response_model=ActivityOut)
 async def create_activity(
@@ -545,11 +628,21 @@ async def create_activity(
     description: Optional[str] = Form(None),
     activity_date: str = Form(...),
     tags: str = Form("[]"),
+    skills: str = Form("[]"),
     file: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_student),
 ):
-    """Log a free-form Misk Core activity. Optional file attachment."""
+    """Log a free-form Misk Core activity. Optional file attachment.
+
+    `skills` is a JSON array of up to 3 {dimension, justification} claims against
+    the 31 skill dimensions; each becomes a 'pending_review' core_skill_ratings
+    row for the teacher to reject or level.
+    """
     student_id = current_user['user_id']
+
+    # Validate skill claims up-front (before any write) so a bad claim never
+    # creates an orphan activity.
+    skill_claims = _parse_activity_skills(skills)
 
     raw_tags = tags.strip() if tags else ""
     if not raw_tags:
@@ -661,6 +754,19 @@ async def create_activity(
         ),
     )
     new_id = cursor.lastrowid
+
+    # Create one pending skill claim per tagged dimension. Append-only; the
+    # teacher rejects or levels each on review. UNIQUE(activity_id, dimension)
+    # guards against duplicates (already de-duped above).
+    for claim in skill_claims:
+        cursor.execute(
+            """
+            INSERT INTO core_skill_ratings
+                (activity_id, student_id, dimension, justification, status)
+            VALUES (?, ?, ?, ?, 'pending_review')
+            """,
+            (new_id, student_id, claim["dimension"], claim["justification"]),
+        )
     conn.commit()
 
     cursor.execute(
@@ -717,8 +823,39 @@ async def list_activities(
 
     cursor.execute(query, params)
     activities = [_row_to_activity_out(row) for row in cursor.fetchall()]
+    skills_by_activity = _skills_by_activity(cursor, [a.id for a in activities])
     conn.close()
-    return {"activities": activities}
+    return {"activities": [
+        {**a.model_dump(), "skills": skills_by_activity.get(a.id, [])}
+        for a in activities
+    ]}
+
+
+def _skills_by_activity(cursor, activity_ids):
+    """Map activity_id -> list of its skill claims {id, dimension, justification,
+    level, status}. One query for the whole page; empty input -> {}."""
+    if not activity_ids:
+        return {}
+    placeholders = ",".join("?" for _ in activity_ids)
+    cursor.execute(
+        f"""
+        SELECT id, activity_id, dimension, justification, level, status
+        FROM core_skill_ratings
+        WHERE activity_id IN ({placeholders})
+        ORDER BY id ASC
+        """,
+        list(activity_ids),
+    )
+    out = {}
+    for r in cursor.fetchall():
+        out.setdefault(r['activity_id'], []).append({
+            "id": r['id'],
+            "dimension": r['dimension'],
+            "justification": r['justification'],
+            "level": r['level'],
+            "status": r['status'],
+        })
+    return out
 
 
 # ============================================================

@@ -20,6 +20,7 @@ import React from 'react';
 function SkillsDetailTable({ title, rows, groupLabel = 'Group', itemLabel = 'Characteristic' }) {
   const items = Array.isArray(rows) ? rows : [];
   if (items.length === 0) return null;
+  const hasUnevidenced = items.some((r) => r.status === 'no_evidence');
 
   // Preserve the payload's category order.
   const order = [];
@@ -57,7 +58,7 @@ function SkillsDetailTable({ title, rows, groupLabel = 'Group', itemLabel = 'Cha
             <tr>
               <th style={{ ...headCell, width: '26%' }}>{groupLabel}</th>
               <th style={headCell}>{itemLabel}</th>
-              <th style={{ ...headCell, textAlign: 'right', width: '12%' }}>Score</th>
+              <th style={{ ...headCell, textAlign: 'right', width: '20%' }}>Score</th>
             </tr>
           </thead>
           <tbody>
@@ -87,11 +88,17 @@ function SkillsDetailTable({ title, rows, groupLabel = 'Group', itemLabel = 'Cha
                         ...cell,
                         textAlign: 'right',
                         fontWeight: 700,
-                        whiteSpace: 'nowrap',
+                        whiteSpace: muted ? 'normal' : 'nowrap',
                         color: muted ? '#aab2ae' : '#02664b',
                       }}
                     >
-                      {muted ? '—' : row.score}
+                      {muted ? (
+                        <span style={{ fontWeight: 500, fontStyle: 'italic', fontSize: 12 }}>
+                          Not yet evidenced
+                        </span>
+                      ) : (
+                        row.score
+                      )}
                     </td>
                   </tr>
                 );
@@ -100,6 +107,11 @@ function SkillsDetailTable({ title, rows, groupLabel = 'Group', itemLabel = 'Cha
           </tbody>
         </table>
       </div>
+      {hasUnevidenced && (
+        <p style={{ fontSize: 12, color: '#6d7f7a', margin: '8px 0 0', fontStyle: 'italic' }}>
+          Dimensions marked “Not yet evidenced” grow through approved Misk Core activities.
+        </p>
+      )}
     </div>
   );
 }

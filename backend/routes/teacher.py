@@ -733,13 +733,48 @@ async def set_diploma_award(
 # Chunk 32: Misk Core activity review (teacher queue + decision)
 # ============================================================
 
+class ActivitySkillLevelIn(BaseModel):
+    rating_id: int
+    level: int                 # 0=Not evident(reject) .. 3=Embedded
+
+
 class ActivityReviewIn(BaseModel):
     activity_id: int
     decision: str              # 'approved' | 'rejected'
     feedback: Optional[str] = None
+    # Per-claim teacher levels for this activity's Misk Core skill claims.
+    # Optional (legacy callers omit it); the new review UI sends one per claim.
+    skill_levels: List[ActivitySkillLevelIn] = []
 
 
 ACTIVITY_STATUSES = {"pending_review", "approved", "rejected"}
+
+
+def _review_skills_by_activity(cursor, activity_ids):
+    """Map activity_id -> list of its skill claims {id, dimension, justification,
+    level, status} for the review queue. One query; empty input -> {}."""
+    if not activity_ids:
+        return {}
+    placeholders = ",".join("?" for _ in activity_ids)
+    cursor.execute(
+        f"""
+        SELECT id, activity_id, dimension, justification, level, status
+        FROM core_skill_ratings
+        WHERE activity_id IN ({placeholders})
+        ORDER BY id ASC
+        """,
+        list(activity_ids),
+    )
+    out = {}
+    for r in cursor.fetchall():
+        out.setdefault(r['activity_id'], []).append({
+            "id": r['id'],
+            "dimension": r['dimension'],
+            "justification": r['justification'],
+            "level": r['level'],
+            "status": r['status'],
+        })
+    return out
 
 
 def _activity_review_row(row) -> dict:
@@ -811,6 +846,9 @@ async def list_activities_for_review(
 
     cursor.execute(query, params)
     activities = [_activity_review_row(r) for r in cursor.fetchall()]
+    skills_by_activity = _review_skills_by_activity(cursor, [a["id"] for a in activities])
+    for a in activities:
+        a["skills"] = skills_by_activity.get(a["id"], [])
     conn.close()
     return {"activities": activities}
 
@@ -846,13 +884,46 @@ async def review_activity(
         (payload.decision, teacher_id, reviewed_at, payload.feedback,
          payload.activity_id),
     )
+
+    # Apply the per-claim decision to this activity's Misk Core skill claims.
+    cursor.execute(
+        "SELECT id FROM core_skill_ratings WHERE activity_id = ?",
+        (payload.activity_id,),
+    )
+    valid_ids = {r['id'] for r in cursor.fetchall()}
+
+    if payload.decision == "rejected":
+        # Whole activity rejected -> every claim is Not evident.
+        cursor.execute(
+            "UPDATE core_skill_ratings SET status = 'rejected', level = 0, "
+            "reviewed_by = ?, reviewed_at = ? WHERE activity_id = ?",
+            (teacher_id, reviewed_at, payload.activity_id),
+        )
+    else:
+        for sl in payload.skill_levels:
+            if sl.rating_id not in valid_ids:
+                conn.close()
+                _err(400, "ACTIVITY_SKILL_RATING_INVALID",
+                     f"Skill rating {sl.rating_id} does not belong to this activity.")
+            if sl.level < 0 or sl.level > 3:
+                conn.close()
+                _err(400, "ACTIVITY_SKILL_LEVEL_INVALID",
+                     "level must be between 0 (Not evident) and 3 (Embedded).")
+            new_status = "rejected" if sl.level == 0 else "approved"
+            cursor.execute(
+                "UPDATE core_skill_ratings SET status = ?, level = ?, "
+                "reviewed_by = ?, reviewed_at = ? WHERE id = ?",
+                (new_status, sl.level, teacher_id, reviewed_at, sl.rating_id),
+            )
+
     conn.commit()
+    updated_skills = _review_skills_by_activity(cursor, [payload.activity_id]).get(
+        payload.activity_id, [])
     conn.close()
 
     # NOTE (Step 5, post sign-off): Gemini skill extraction for APPROVED Misk
-    # Core activities hooks in here. Sending student activity text off-site is
-    # the same class of decision as the storage policy and is gated on written
-    # approval — so for now approval ONLY records the decision; no AI call.
+    # Core activities is a separate, gated path (sending activity text off-site).
+    # Skill levels here are TEACHER-assigned only; no AI call.
 
     return {
         "activity_id": payload.activity_id,
@@ -860,6 +931,7 @@ async def review_activity(
         "reviewed_by": teacher_id,
         "reviewed_at": reviewed_at,
         "review_feedback": payload.feedback,
+        "skills": updated_skills,
     }
 
 

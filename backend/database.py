@@ -140,47 +140,12 @@ NEW_OBJECTIVES = [
 #   Academic 5 | Internship 2 | National Identity 3 | Leadership 1.
 # ---------------------------------------------------------------------
 HERO_PROGRESS_PROFILES = {
-    # Profile 0 — Ahmed, near-empty (Year 7). Blank-canvas view.
+    # Profile 0 — Hussain Alsaleh, real Year 12 student (consent on file). 100%
+    # across the mandatory objectives. His olympiad evidence + MIT sample are
+    # seeded as Misk Core ACTIVITIES by seed_hussain_hero. He is now the sole
+    # hero seeded by seed_data; the five archetypes are seeded separately with
+    # explicit results + Core ratings (so they do not use this index map).
     0: {
-        "Academic":          {"IELTS": 0, "IGCSE": 10, "IAL": 0, "Qudurat": 0, "Tahsili": 0},
-        "Internship":        {"HPQ or EPQ": 0, "Industry Internship": 0},
-        "National Identity": {"Arabic Language": 15, "Islamic Studies": 0, "Social Studies": 0},
-        "Leadership":        {"CMI Level 2": 0},
-    },
-    # Profile 1 — Fatima, mid-progress balanced (Year 9).
-    1: {
-        "Academic":          {"IELTS": 100, "IGCSE": 60, "IAL": 40, "Qudurat": 45, "Tahsili": 35},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 50},
-        "National Identity": {"Arabic Language": 65, "Islamic Studies": 100, "Social Studies": 40},
-        "Leadership":        {"CMI Level 2": 50},
-    },
-    # Profile 2 — Mohammed, mid-progress lopsided (Year 10).
-    # Strong Academic + National Identity; lagging Internship + Leadership.
-    2: {
-        "Academic":          {"IELTS": 85, "IGCSE": 100, "IAL": 75, "Qudurat": 100, "Tahsili": 80},
-        "Internship":        {"HPQ or EPQ": 25, "Industry Internship": 20},
-        "National Identity": {"Arabic Language": 100, "Islamic Studies": 90, "Social Studies": 85},
-        "Leadership":        {"CMI Level 2": 20},
-    },
-    # Profile 3 — Sara, nearly complete with Leadership lagging (Year 12).
-    3: {
-        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 95, "Qudurat": 100, "Tahsili": 100},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 85},
-        "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 95},
-        "Leadership":        {"CMI Level 2": 60},
-    },
-    # Profile 4 — Abdullah, gold standard (Year 12). 100% everywhere.
-    4: {
-        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudurat": 100, "Tahsili": 100},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100},
-        "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
-        "Leadership":        {"CMI Level 2": 100},
-    },
-    # Profile 5 — Hussain Alsaleh, real Year 12 student (consent on file).
-    # 100% across the mandatory objectives. His olympiad evidence + MIT sample
-    # are Misk Core / activity material and are re-homed when the Misk Core
-    # activity model is built (they have no fixed-objective home now).
-    5: {
         "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudurat": 100, "Tahsili": 100},
         "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100},
         "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
@@ -201,12 +166,7 @@ HERO_PROGRESS_PROFILES = {
 # nodes rendered as muted outlines).
 # ---------------------------------------------------------------------
 HERO_STUDENT_YEARS = {
-    0: 7,   # Ahmed Al-Dosari    — Near-empty profile
-    1: 9,   # Fatima Al-Mansouri — Mid-balanced profile
-    2: 10,  # Mohammed Al-Harbi  — Mid-lopsided profile
-    3: 12,  # Sara Al-Ghamdi     — Nearly-complete profile (Leadership lagging)
-    4: 12,  # Abdullah Al-Otaibi — Gold standard profile
-    5: 12,  # Hussain Alsaleh    — Real Year 12 student (olympiad evidence)
+    0: 12,  # Hussain Alsaleh — Real Year 12 student (olympiad evidence)
 }
 
 
@@ -373,6 +333,35 @@ def init_database():
     """)
 
     # ---------------------------------------------------------------
+    # Misk Core skill-rating layer: teacher-governed (no AI) per-activity
+    # skill claims. The student selects <=3 of the 31 dimensions (20 ACP
+    # leaves + 11 VAA) per activity and justifies each; the teacher rejects
+    # (level 0 / 'rejected') or approves at a level (Emerging 1 / Evident 2 /
+    # Embedded 3). Append-only; the skills engine reads status='approved' AND
+    # level>=1. UNIQUE(activity_id, dimension) = one claim per skill per
+    # activity. dimension strings are validated against skills.ALL_LEAF_DIMENSIONS
+    # at the API layer on write.
+    # ---------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS core_skill_ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activity_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            dimension TEXT NOT NULL,
+            justification TEXT NOT NULL,
+            level INTEGER,
+            status TEXT NOT NULL DEFAULT 'pending_review',
+            reviewed_by INTEGER,
+            reviewed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(activity_id, dimension),
+            FOREIGN KEY (activity_id) REFERENCES student_activities(id),
+            FOREIGN KEY (student_id) REFERENCES users(id),
+            FOREIGN KEY (reviewed_by) REFERENCES users(id)
+        )
+    """)
+
+    # ---------------------------------------------------------------
     # Idempotent ALTER TABLE migrations
     # ---------------------------------------------------------------
     # evidence_submissions: file metadata columns from earlier chunks.
@@ -402,6 +391,10 @@ def init_database():
         "ALTER TABLE student_activities ADD COLUMN reviewed_by INTEGER",
         "ALTER TABLE student_activities ADD COLUMN reviewed_at TIMESTAMP",
         "ALTER TABLE student_activities ADD COLUMN review_feedback TEXT",
+        # Misk Core skill layer: teacher confirms the academic grade against the
+        # uploaded certificate before it counts (gating wired in the teacher flow).
+        "ALTER TABLE student_objective_progress ADD COLUMN grade_confirmed_by INTEGER",
+        "ALTER TABLE student_objective_progress ADD COLUMN grade_confirmed_at TIMESTAMP",
     ):
         try:
             cursor.execute(ddl)
@@ -472,10 +465,12 @@ def init_database():
     # the activity model + categories exist. Idempotent (gated per file).
     seed_hussain_hero(conn)
 
-    # Demo communicator hero — a fully-approved, communication-strong student
-    # with a recorded Distinction, so the teacher report PDF has a complete
-    # subject to download. Idempotent; runs after the active objective set exists.
-    seed_communicator_hero(conn)
+    # Demo archetypes — five distinct students whose Grade 7->12 Misk Core
+    # activities light up the full skills framework, each with a different
+    # signature. Replaces the legacy cohort; Hussain (above) stays as the
+    # real-evidence student. Idempotent; runs after the active objective set,
+    # categories, and core_skill_ratings all exist.
+    seed_demo_archetypes(conn)
 
     conn.close()
 
@@ -846,32 +841,12 @@ def seed_data(conn):
             (identifier, identifier, password_hash, "teacher", full_name)
         )
 
-    # Student insertion order = the seed_index used by
-    # HERO_PROGRESS_PROFILES. Do NOT reorder this list without also
-    # remapping the hero profiles, or the demo narrative will silently
-    # attach to the wrong student names.
+    # Student insertion order = the seed_index used by HERO_PROGRESS_PROFILES.
+    # The legacy random/named cohort has been retired: the demo roster is now
+    # Hussain (real evidence, seeded here as the sole hero at index 0) plus the
+    # five archetypes seeded later by seed_demo_archetypes(). Do NOT reorder.
     student_seed = [
-        ("ahmed",    "Ahmed Al-Dosari"),       # seed_index 0 — hero: Near-empty   (Year 7)
-        ("fatima",   "Fatima Al-Mansouri"),    # seed_index 1 — hero: Mid-balanced (Year 9)
-        ("mohammed", "Mohammed Al-Harbi"),     # seed_index 2 — hero: Mid-lopsided (Year 10)
-        ("sara",     "Sara Al-Ghamdi"),        # seed_index 3 — hero: Nearly complete (Year 12)
-        ("abdullah", "Abdullah Al-Otaibi"),    # seed_index 4 — hero: Gold standard (Year 12)
-        ("hussain",  "Hussain Alsaleh"),       # seed_index 5 — hero: real Year 12 student (olympiad evidence)
-        ("noura",    "Noura Al-Qahtani"),
-        ("khalid",   "Khalid Al-Mutairi"),
-        ("lama",     "Lama Al-Shehri"),
-        ("omar",     "Omar Al-Zahrani"),
-        ("huda",     "Huda Al-Enezi"),
-        ("faisal",   "Faisal Al-Dawsari"),
-        ("maha",     "Maha Al-Balawi"),
-        ("turki",    "Turki Al-Subaie"),
-        ("reem",     "Reem Al-Shammari"),
-        ("saud",     "Saud Al-Ajmi"),
-        ("layla",    "Layla Al-Salem"),
-        ("bandar",   "Bandar Al-Malki"),
-        ("aisha",    "Aisha Al-Habib"),
-        ("nawaf",    "Nawaf Al-Rashid"),
-        ("shahad",   "Shahad Al-Khalifa"),
+        ("hussain",  "Hussain Alsaleh"),       # seed_index 0 — real Year 12 student (olympiad evidence)
     ]
 
     used_suffixes = set()
@@ -947,7 +922,9 @@ def seed_data(conn):
     file_types = ["report.pdf", "presentation.pptx", "video.mp4", "essay.docx", "project.pdf"]
     statuses = ["submitted", "under_review", "approved", "rejected"]
 
-    num_submissions = random.randint(60, 80)
+    # Only Hussain exists as a student at this point (the archetypes are seeded
+    # later), so keep this small — just enough to populate the review queue.
+    num_submissions = random.randint(6, 10)
 
     for _ in range(num_submissions):
         student_id = random.choice(student_ids)
@@ -1330,43 +1307,205 @@ def seed_hussain_hero(conn):
               f"{skipped_missing} missing source(s) skipped)")
 
 
-def seed_communicator_hero(conn):
-    """Seed 'Salma Al-Otaibi' — a demo hero student who is strong on
-    communication, with the full mandatory diploma completed and teacher-
-    approved end to end, plus a recorded Distinction award. Gives the teacher
-    report PDF a complete, downloadable subject.
+# ---------------------------------------------------------------------
+# Demo archetypes: five distinct Grade-12 students whose Misk Core
+# activities (dated across Grade 7->12) light up the full skills framework,
+# so each profile reads differently. These replace the legacy random/hero
+# cohort; Hussain is kept separately as the real-evidence student.
+#
+# Each spec: mandatory results (performance-scaled academics) + one Core
+# activity per year Grade 7->12, each carrying APPROVED teacher-levelled
+# skill claims (Emerging 1 / Evident 2 / Embedded 3) against the 31
+# dimensions. activity_date uses the spring calendar year of each grade
+# (Yr7=2021 ... Yr12=2026 for a student in Year 12 now).
+# ---------------------------------------------------------------------
+DEMO_ARCHETYPES = [
+    {
+        "username": "layla2026@miskschools.edu.sa",
+        "full_name": "Layla Al-Qahtani",
+        "year": 12,
+        "award": ("Distinction", "Outstanding analytical ability across the diploma."),
+        "results": {
+            "IELTS": ("8.0", 1),
+            "IGCSE": (json.dumps(["A*", "A*", "A*", "A*", "A", "A", "A", "A"]), 1),
+            "IAL": (json.dumps(["A*", "A*", "A"]), 1),
+            "Qudurat": ("97.0", 1),
+            "Tahsili": ("96.0", 1),
+        },
+        "activities": [
+            (2021, "CCAP", "Logic and puzzles club",
+             [("Critical or logical thinking", 1)]),
+            (2022, "Competitions and Awards", "Junior science fair",
+             [("Precision", 2), ("Critical or logical thinking", 2)]),
+            (2023, "Competitions and Awards", "Regional science fair finalist",
+             [("Critical or logical thinking", 3), ("Precision", 2)]),
+            (2024, "Competitions and Awards", "National maths olympiad",
+             [("Complex and multi-step problem solving", 3), ("Critical or logical thinking", 2)]),
+            (2025, "Project 10", "Extended research essay",
+             [("Abstraction", 2), ("Precision", 3)]),
+            (2026, "CCAP", "Senior ethics debate society",
+             [("Seeing alternative perspectives", 2), ("Strategy-planning", 2)]),
+        ],
+    },
+    {
+        "username": "omar2026@miskschools.edu.sa",
+        "full_name": "Omar Al-Subaie",
+        "year": 12,
+        "award": ("Distinction", "Exceptional communicator and student leader."),
+        "results": {
+            "IELTS": ("9.0", 1),
+            "IGCSE": (json.dumps(["A", "A", "B", "B", "B"]), 1),
+            "IAL": (json.dumps(["A", "B", "B"]), 1),
+            "Qudurat": ("80.0", 1),
+            "Tahsili": ("78.0", 1),
+        },
+        "activities": [
+            (2021, "CCAP", "Class representative",
+             [("Confident", 1), ("Collaborative", 2)]),
+            (2022, "CCAP", "Student council member",
+             [("Collaborative", 2), ("Confident", 2)]),
+            (2023, "Competitions and Awards", "Model UN delegate",
+             [("Confident", 3), ("Concerned for Society", 2)]),
+            (2024, "Community Service", "Community recycling campaign lead",
+             [("Concerned for Society", 3), ("Collaborative", 2)]),
+            (2025, "Community Service", "Charity fundraiser organiser",
+             [("Collaborative", 3), ("Concerned for Society", 3)]),
+            (2026, "Competitions and Awards", "Regional public-speaking award",
+             [("Confident", 3)]),
+        ],
+    },
+    {
+        "username": "sara2026@miskschools.edu.sa",
+        "full_name": "Sara Al-Dossari",
+        "year": 12,
+        "award": ("Merit", "Inventive, enterprising and a genuine original."),
+        "results": {
+            "IELTS": ("7.5", 1),
+            "IGCSE": (json.dumps(["A", "A", "B", "B", "C"]), 1),
+            "IAL": (json.dumps(["A", "B", "C"]), 1),
+            "Qudurat": ("75.0", 1),
+            "Tahsili": ("73.0", 1),
+        },
+        "activities": [
+            (2021, "CCAP", "Art club",
+             [("Intellectual playfulness", 2), ("Originality", 1)]),
+            (2022, "Competitions and Awards", "School art exhibition",
+             [("Originality", 2), ("Intellectual playfulness", 2)]),
+            (2023, "Project 10", "Designed an original board game",
+             [("Fluent thinking", 2), ("Flexible thinking", 2)]),
+            (2024, "Project 10", "Founded a small craft business",
+             [("Creative & Enterprising", 3), ("Risk-Taking", 2)]),
+            (2025, "Competitions and Awards", "Won a design competition",
+             [("Originality", 3), ("Evolutionary and revolutionary thinking", 2)]),
+            (2026, "Competitions and Awards", "Startup pitch competition",
+             [("Creative & Enterprising", 3), ("Risk-Taking", 3)]),
+        ],
+    },
+    {
+        "username": "faisal2026@miskschools.edu.sa",
+        "full_name": "Faisal Al-Harbi",
+        "year": 12,
+        "award": ("Distinction", "Outstanding digital builder and problem solver."),
+        "results": {
+            "IELTS": ("8.0", 1),
+            "IGCSE": (json.dumps(["A", "A", "A", "B", "B"]), 1),
+            "IAL": (json.dumps(["A", "A", "B"]), 1),
+            "Qudurat": ("90.0", 1),
+            "Tahsili": ("88.0", 1),
+        },
+        "activities": [
+            (2021, "CCAP", "Coding club (beginner)",
+             [("Digital Thinker", 1)]),
+            (2022, "Project 10", "Built the school-club website",
+             [("Digital Thinker", 2), ("Connection finding", 2)]),
+            (2023, "Competitions and Awards", "Robotics team member",
+             [("Digital Thinker", 3), ("Automaticity", 2)]),
+            (2024, "Project 10", "Built a mobile app",
+             [("Digital Thinker", 3), ("Abstraction", 2)]),
+            (2025, "Project 10", "Data-science project",
+             [("Digital Thinker", 3), ("Generalisation", 2), ("Speed and accuracy", 2)]),
+            (2026, "Competitions and Awards", "Hackathon winner",
+             [("Digital Thinker", 3), ("Connection finding", 2)]),
+        ],
+    },
+    {
+        "username": "noura2026@miskschools.edu.sa",
+        "full_name": "Noura Al-Mutairi",
+        "year": 12,
+        "award": ("Distinction", "Remarkable resilience and sustained commitment."),
+        "results": {
+            "IELTS": ("8.0", 1),
+            "IGCSE": (json.dumps(["A", "A", "A", "B", "B"]), 1),
+            "IAL": (json.dumps(["A", "B", "B"]), 1),
+            "Qudurat": ("86.0", 4),
+            "Tahsili": ("84.0", 2),
+        },
+        "activities": [
+            (2021, "Trips and Visits", "Joined the football team",
+             [("Practice", 2), ("Perseverance", 2)]),
+            (2022, "CCAP", "Started piano grade exams",
+             [("Practice", 2), ("Perseverance", 2)]),
+            (2023, "CCAP", "Kept up sport and music",
+             [("Practice", 3), ("Resilience", 2)]),
+            (2024, "CCAP", "Team captain",
+             [("Collaborative", 2), ("Perseverance", 3)]),
+            (2025, "Competitions and Awards", "Piano recital",
+             [("Practice", 3), ("Confident", 2)]),
+            (2026, "Competitions and Awards", "Completed a half-marathon",
+             [("Resilience", 3), ("Perseverance", 3)]),
+        ],
+    },
+]
 
-    Communication maps to the Confident dimension (source-of-truth translation
-    layer: Communicator -> Confident). A top IELTS (9.0) drives Confident to its
-    rating ceiling, and all four Confident-feeding objectives (IELTS, Industry
-    Internship, Arabic Language, CMI Level 2) are approved, so Confident is the
-    standout skill while academics stay solid-but-not-stellar.
 
-    Idempotent and safe on every startup: the user is created once; progress is
-    INSERT OR IGNORE (UNIQUE student/objective); results are written only where
-    NULL; the award is inserted only if absent. Runs AFTER seed_data and the
-    objective restructure so the active objective set exists and existing student
-    ids are never disturbed.
+def _demo_category_id(cursor, name):
+    """Resolve an active activity-category id by name, falling back to the first
+    active category so seeding never fails on a naming mismatch."""
+    cursor.execute(
+        "SELECT id FROM activity_categories WHERE is_active = 1 AND name = ? LIMIT 1",
+        (name,),
+    )
+    row = cursor.fetchone()
+    if row is not None:
+        return row['id']
+    cursor.execute(
+        "SELECT id FROM activity_categories WHERE is_active = 1 "
+        "ORDER BY display_order, id LIMIT 1"
+    )
+    row = cursor.fetchone()
+    return row['id'] if row is not None else None
+
+
+def seed_demo_archetype(conn, spec):
+    """Seed one demo archetype student (idempotent). Creates the user, approves
+    every mandatory objective with results + teacher grade-confirmation, seeds
+    its Grade 7->12 Core activities with APPROVED teacher-levelled skill claims,
+    and records the manual diploma award. Safe on every startup: user created
+    once; progress INSERT OR IGNORE; results/grade-confirmation written only
+    where NULL; activities keyed by (student, title); claims INSERT OR IGNORE
+    (UNIQUE activity/dimension); award inserted only if absent.
     """
     cursor = conn.cursor()
-    username = "salma2026@miskschools.edu.sa"
-    full_name = "Salma Al-Otaibi"
 
-    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+    cursor.execute("SELECT id FROM users WHERE username = ?", (spec['username'],))
     row = cursor.fetchone()
     if row is None:
         cursor.execute(
             "INSERT INTO users (username, email, password_hash, role, full_name, "
-            "student_year) VALUES (?, ?, ?, 'student', ?, 12)",
-            (username, username, hash_password("password123"), full_name),
+            "student_year) VALUES (?, ?, ?, 'student', ?, ?)",
+            (spec['username'], spec['username'], hash_password("password123"),
+             spec['full_name'], spec.get('year', 12)),
         )
         student_id = cursor.lastrowid
     else:
         student_id = row['id']
 
-    # Approve every active mandatory objective (Grade 7->12 fully completed and
-    # teacher-approved). INSERT OR IGNORE is idempotent and never disturbs an
-    # existing row.
+    cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 1")
+    t_row = cursor.fetchone()
+    teacher_id = t_row['id'] if t_row is not None else None
+    now = datetime.utcnow().isoformat()
+
+    # Approve every active mandatory objective.
     cursor.execute("SELECT id FROM objectives WHERE is_active = 1")
     for obj in cursor.fetchall():
         cursor.execute(
@@ -1376,37 +1515,65 @@ def seed_communicator_hero(conn):
             (student_id, obj['id']),
         )
 
-    # Results — communication-leaning: a top IELTS, solid academics, so Confident
-    # is the clear peak. Written only where NULL (never overwrites a teacher).
-    results = {
-        "IELTS":   ("9.0", 1),
-        "IGCSE":   (json.dumps(["A", "A", "B", "B", "C"]), 1),
-        "IAL":     (json.dumps(["A", "B", "B"]), 1),
-        "Qudurat": ("80.0", 1),
-        "Tahsili": ("78.0", 1),
-    }
-    for r_title, (r_value, r_attempts) in results.items():
+    # Academic results + teacher grade-confirmation (only where NULL).
+    for r_title, (r_value, r_attempts) in spec['results'].items():
         cursor.execute(
             """UPDATE student_objective_progress
-               SET result_value = ?, attempts = ?
+               SET result_value = ?, attempts = ?,
+                   grade_confirmed_by = ?, grade_confirmed_at = ?
                WHERE student_id = ? AND result_value IS NULL
                  AND objective_id = (SELECT id FROM objectives WHERE title = ?)""",
-            (r_value, r_attempts, student_id, r_title),
+            (r_value, r_attempts, teacher_id, now, student_id, r_title),
         )
 
-    # Record the manual diploma award (Distinction) if none exists yet.
-    cursor.execute("SELECT id FROM diploma_awards WHERE student_id = ?", (student_id,))
-    if cursor.fetchone() is None:
-        cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id LIMIT 1")
-        t_row = cursor.fetchone()
-        teacher_id = t_row['id'] if t_row is not None else None
+    # Grade 7->12 Core activities, each with approved teacher-levelled claims.
+    for year, category_name, title, claims in spec['activities']:
         cursor.execute(
-            "INSERT INTO diploma_awards "
-            "(student_id, eligible_for_diploma, award_level, selected_by, selected_at, notes) "
-            "VALUES (?, 1, 'Distinction', ?, ?, ?)",
-            (student_id, teacher_id, datetime.utcnow().isoformat(),
-             "Exemplary communicator; outstanding across the mandatory diploma."),
+            "SELECT id FROM student_activities WHERE student_id = ? AND title = ?",
+            (student_id, title),
         )
+        existing = cursor.fetchone()
+        if existing is not None:
+            activity_id = existing['id']
+        else:
+            cursor.execute(
+                """INSERT INTO student_activities
+                   (student_id, category_id, title, description, activity_date,
+                    tags, status, reviewed_by, reviewed_at, review_feedback)
+                   VALUES (?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?)""",
+                (student_id, _demo_category_id(cursor, category_name), title, None,
+                 f"{year}-05-15", json.dumps([]), teacher_id, now,
+                 "Reviewed and approved."),
+            )
+            activity_id = cursor.lastrowid
+        for dimension, level in claims:
+            cursor.execute(
+                """INSERT OR IGNORE INTO core_skill_ratings
+                   (activity_id, student_id, dimension, justification, level,
+                    status, reviewed_by, reviewed_at)
+                   VALUES (?, ?, ?, ?, ?, 'approved', ?, ?)""",
+                (activity_id, student_id, dimension,
+                 f"Demonstrated {dimension} through \"{title}\".",
+                 level, teacher_id, now),
+            )
+
+    # Manual diploma award (all mandatory approved -> eligible) if absent.
+    award = spec.get('award')
+    if award is not None:
+        cursor.execute("SELECT id FROM diploma_awards WHERE student_id = ?", (student_id,))
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "INSERT INTO diploma_awards (student_id, eligible_for_diploma, "
+                "award_level, selected_by, selected_at, notes) VALUES (?, 1, ?, ?, ?, ?)",
+                (student_id, award[0], teacher_id, now, award[1]),
+            )
 
     conn.commit()
-    print("\u2713 Communicator hero (Salma Al-Otaibi) seeded.")
+
+
+def seed_demo_archetypes(conn):
+    """Seed the five demo archetypes. Idempotent; runs after the active objective
+    set, the Misk Core categories, and the core_skill_ratings table all exist."""
+    for spec in DEMO_ARCHETYPES:
+        seed_demo_archetype(conn, spec)
+    print(f"\u2713 Demo archetypes seeded ({len(DEMO_ARCHETYPES)} students).")

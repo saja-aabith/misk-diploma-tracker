@@ -398,14 +398,37 @@ function DiplomaAwardPanel({ studentId }) {
   );
 }
 
+// Misk Core skill levels (shared 0–3 scale). 0 = Not evident rejects that one
+// claim; 2 = Evident is the diploma floor.
+const CORE_SKILL_LEVELS = [
+  { value: 0, label: 'Not evident' },
+  { value: 1, label: 'Emerging' },
+  { value: 2, label: 'Evident' },
+  { value: 3, label: 'Embedded' },
+];
+
 // One card in the Misk Core activity review queue (Chunk 32). Holds its own
 // feedback + busy state and calls teacher.reviewActivity on a decision; the
 // parent reloads the queue via onReviewed. Approving/rejecting is allowed
-// from any current status so a teacher can correct a prior decision.
+// from any current status so a teacher can correct a prior decision. Approving
+// also applies a per-claim level to each tagged skill (sent as skillLevels);
+// rejecting the activity marks every claim Not evident server-side.
 function ActivityReviewCard({ activity, onReviewed }) {
+  const claims = Array.isArray(activity.skills) ? activity.skills : [];
   const [feedback, setFeedback] = useState(activity.review_feedback || '');
+  const [levels, setLevels] = useState(() => {
+    const init = {};
+    claims.forEach((c) => {
+      // Pre-fill with the existing level if already reviewed, else Evident (2).
+      init[c.id] = c.level === null || c.level === undefined ? 2 : c.level;
+    });
+    return init;
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  const setLevel = (ratingId, value) =>
+    setLevels((prev) => ({ ...prev, [ratingId]: Number(value) }));
 
   const decide = async (decision) => {
     setError('');
@@ -415,6 +438,10 @@ function ActivityReviewCard({ activity, onReviewed }) {
         activityId: activity.id,
         decision,
         feedback: feedback.trim() || null,
+        skillLevels:
+          decision === 'approved'
+            ? claims.map((c) => ({ rating_id: c.id, level: levels[c.id] ?? 2 }))
+            : [],
       });
       onReviewed();
     } catch (err) {
@@ -449,6 +476,51 @@ function ActivityReviewCard({ activity, onReviewed }) {
             storedFilename={activity.stored_filename}
             originalFilename={activity.original_filename}
           />
+        )}
+
+        {claims.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#02664b', margin: '0 0 6px' }}>
+              Skills claimed ({claims.length})
+            </p>
+            {claims.map((c) => (
+              <div key={c.id} style={{ borderTop: '1px solid #eef2f0', padding: '8px 0' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#334' }}>
+                      {c.dimension}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#6d7f7a', marginTop: 2 }}>
+                      {c.justification}
+                    </div>
+                  </div>
+                  <select
+                    value={levels[c.id]}
+                    onChange={(e) => setLevel(c.id, e.target.value)}
+                    disabled={busy}
+                    style={{ minHeight: 36 }}
+                  >
+                    {CORE_SKILL_LEVELS.map((l) => (
+                      <option key={l.value} value={l.value}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+            <p style={{ fontSize: 11, color: '#9aa6a1', marginTop: 4 }}>
+              Approving applies the level beside each skill. “Not evident” rejects
+              that one claim; rejecting the activity marks every claim Not evident.
+            </p>
+          </div>
         )}
       </div>
 
