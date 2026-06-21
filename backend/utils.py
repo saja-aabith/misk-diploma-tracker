@@ -46,7 +46,12 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 # include .pptx. The legacy /student/upload route still has its own
 # inline list that accepts .pptx; that list is collapsed into this one
 # in Chunk 6 when the route switches to validate_upload().
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx", ".mp4"}
+#
+# Video (.mp4) removed from the upload gate per school data-protection
+# decision (student privacy). Evidence is documents/images only. The
+# .mp4 MIME entry below is deliberately retained so any video already on
+# disk continues to serve correctly via files.py's fallback lookup.
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx"}
 
 EXTENSION_MIME_TYPES = {
     ".pdf":  "application/pdf",

@@ -53,12 +53,15 @@ function UploadModal({ objective, onClose, onSuccess }) {
             <label>File</label>
             <input
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.docx,.mp4"
+              accept=".pdf,.jpg,.jpeg,.png,.docx"
               onChange={(e) => setFile(e.target.files[0])}
               required
             />
             <small style={{ color: '#7f8c8d' }}>
-              Allowed: PDF, JPG, PNG, DOCX, MP4 (max 50MB)
+              Allowed: PDF, JPG, PNG, DOCX (max 50MB)
+            </small>
+            <small style={{ color: '#7f8c8d', display: 'block', marginTop: 2 }}>
+              Upload images of your work only — never photos of yourself.
             </small>
           </div>
 
