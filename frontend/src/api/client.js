@@ -1,7 +1,16 @@
 import axios from 'axios';
 import { getToken } from '../utils/auth';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+// API base URL. Overridable at build time via REACT_APP_API_BASE_URL so the
+// same source runs on a dev laptop and on the school server without edits.
+// CRA inlines REACT_APP_* at BUILD time (npm run build), not at runtime, so
+// the server value must be set before building. With no env var set, this
+// falls back to the local dev default, preserving the existing workflow.
+// Server options (set whichever matches how the front end is served):
+//   - same origin behind a reverse proxy:  REACT_APP_API_BASE_URL=/api/v1
+//   - separate host/port:                  REACT_APP_API_BASE_URL=http://<server-address>:8000/api/v1
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
