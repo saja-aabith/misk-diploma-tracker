@@ -34,11 +34,12 @@ export { API_BASE_URL };
 
 // API methods
 export const auth = {
+  // NOTE: public self-registration has been removed. Accounts are created by
+  // an administrator via the admin endpoints below (admin.createUser), which
+  // are guarded server-side by get_current_admin. There is intentionally no
+  // auth.register method any more.
   login: (username, password) =>
     apiClient.post('/auth/login', { username, password }),
-
-  register: (userData) =>
-    apiClient.post('/auth/register', userData),
 
   me: () =>
     apiClient.get('/auth/me'),
@@ -279,6 +280,51 @@ export const teacher = {
     const filename = match ? match[1] : `Misk_Diploma_Report_${studentId}.pdf`;
     return { blob: response.data, filename };
   },
+};
+
+export const admin = {
+  // GET /admin/users — list student + teacher accounts (admin only).
+  // Returns { users: [{ id, username, full_name, role, current_grade, entry_grade }] }.
+  listUsers: () =>
+    apiClient.get('/admin/users'),
+
+  // POST /admin/create-user — create a student or teacher (admin only).
+  // The server generates the login username from usernameBase + a 4-digit
+  // suffix and returns the created account (including the generated username).
+  // For teachers, currentGrade/entryGrade are ignored by the server.
+  // {
+  //   role:         'student' | 'teacher',  required
+  //   fullName:     string,                 required
+  //   usernameBase: string,                 required (first name, a-z)
+  //   password:     string,                 required (min 8)
+  //   currentGrade: number | null,          required for students (4-12)
+  //   entryGrade:   number | null,          required for students (4-12)
+  // }
+  createUser: ({
+    role,
+    fullName,
+    usernameBase,
+    password,
+    currentGrade = null,
+    entryGrade = null,
+  }) =>
+    apiClient.post('/admin/create-user', {
+      role,
+      full_name: fullName,
+      username_base: usernameBase,
+      password,
+      current_grade: currentGrade,
+      entry_grade: entryGrade,
+    }),
+
+  // POST /admin/reset-password — set a new password for a student or teacher
+  // (admin only). Admin accounts cannot be reset here.
+  // { userId: number, newPassword: string (min 8) }
+  resetPassword: ({ userId, newPassword }) =>
+    apiClient.post('/admin/reset-password', {
+      user_id: userId,
+      new_password: newPassword,
+    }),
 };
 
 // Build an absolute URL to an authenticated file. NOTE: this URL is NOT

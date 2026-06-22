@@ -1,45 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from database import get_db
-from models import UserRegister, UserLogin, UserResponse, TokenResponse
-from utils import create_access_token, verify_password, hash_password, get_current_user
-from fastapi import Depends
+from models import UserLogin, UserResponse, TokenResponse
+from utils import create_access_token, verify_password, get_current_user
 
 router = APIRouter()
 
-@router.post("/register", response_model=TokenResponse)
-async def register(user: UserRegister):
-    """Register a new user"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if user exists
-    cursor.execute("SELECT * FROM users WHERE username = ? OR email = ?", (user.username, user.email))
-    if cursor.fetchone():
-        raise HTTPException(status_code=400, detail="Username or email already exists")
-    
-    # Hash password and create user
-    password_hash = hash_password(user.password)
-    cursor.execute(
-        """INSERT INTO users (username, email, password_hash, role, full_name) 
-           VALUES (?, ?, ?, ?, ?)""",
-        (user.username, user.email, password_hash, user.role, user.full_name)
-    )
-    conn.commit()
-    user_id = cursor.lastrowid
-    
-    # Create token
-    token = create_access_token({"user_id": user_id, "username": user.username, "role": user.role})
-    
-    user_response = UserResponse(
-        id=user_id,
-        username=user.username,
-        email=user.email,
-        role=user.role,
-        full_name=user.full_name
-    )
-    
-    conn.close()
-    return TokenResponse(access_token=token, user=user_response)
+# NOTE: public self-registration (POST /register) has been removed. Accounts
+# are created only by an administrator via routes/admin.py (create-user),
+# which is guarded by get_current_admin. This closes the prior hole where any
+# unauthenticated caller on the network could create an account — including a
+# privileged (teacher) one — by posting a chosen role.
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):

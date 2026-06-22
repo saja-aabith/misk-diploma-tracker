@@ -40,6 +40,8 @@ function LoginPage() {
         navigate('/dashboard/student');
       } else if (user.role === 'teacher') {
         navigate('/dashboard/teacher');
+      } else if (user.role === 'admin') {
+        navigate('/dashboard/admin');
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed. Please try again.');

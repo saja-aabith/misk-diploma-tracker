@@ -4,6 +4,7 @@ import HomePage from './components/HomePage';
 import LoginPage from './components/LoginPage';
 import StudentDashboard from './components/StudentDashboard';
 import TeacherDashboard from './components/TeacherDashboard';
+import AdminDashboard from './components/AdminDashboard';
 import { isAuthenticated, getUserRole } from './utils/auth';
 
 function ProtectedRoute({ children, allowedRole }) {
@@ -38,6 +39,14 @@ function App() {
           element={
             <ProtectedRoute allowedRole="teacher">
               <TeacherDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/dashboard/admin" 
+          element={
+            <ProtectedRoute allowedRole="admin">
+              <AdminDashboard />
             </ProtectedRoute>
           } 
         />

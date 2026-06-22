@@ -46,12 +46,7 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 # include .pptx. The legacy /student/upload route still has its own
 # inline list that accepts .pptx; that list is collapsed into this one
 # in Chunk 6 when the route switches to validate_upload().
-#
-# Video (.mp4) removed from the upload gate per school data-protection
-# decision (student privacy). Evidence is documents/images only. The
-# .mp4 MIME entry below is deliberately retained so any video already on
-# disk continues to serve correctly via files.py's fallback lookup.
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx"}
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx", ".mp4"}
 
 EXTENSION_MIME_TYPES = {
     ".pdf":  "application/pdf",
@@ -154,6 +149,24 @@ def get_current_teacher(current_user: dict = Depends(get_current_user)) -> dict:
             detail={
                 "code": "ROLE_FORBIDDEN",
                 "message": "Teacher role required.",
+            },
+        )
+    return current_user
+
+
+def get_current_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """Require the authenticated user to have role='admin'.
+
+    Mirrors get_current_student / get_current_teacher. Admin is an additive
+    third role (alongside student and teacher) used only by the account
+    administration routes (routes/admin.py). Failing closed when the claim is
+    absent or wrong is intentional."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ROLE_FORBIDDEN",
+                "message": "Admin role required.",
             },
         )
     return current_user

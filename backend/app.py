@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 from database import init_database
-from routes import auth, student, teacher, health, files
+from routes import auth, student, teacher, health, files, admin
 from utils import UPLOAD_DIR
 
 # Initialize FastAPI app
@@ -47,6 +47,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(student.router, prefix="/api/v1/student", tags=["Student"])
 app.include_router(teacher.router, prefix="/api/v1/teacher", tags=["Teacher"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(files.router, prefix="/api/v1/files", tags=["Files"])
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
 

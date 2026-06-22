@@ -1,6 +1,6 @@
 from typing import TypeVar, Generic, Optional, List
 from datetime import date, datetime
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 # ============================================================
 # Generic API wrappers (existing — DO NOT change shape/behaviour)
@@ -393,3 +393,110 @@ class StudentJourney(BaseModel):
     """
     current_year: Optional[int] = Field(default=None, ge=7, le=12)
     years: List[JourneyYear]
+
+# ============================================================
+# Admin account-administration models (Chunk: admin)
+# ============================================================
+# Backs routes/admin.py. Admin is an additive third role (alongside student
+# and teacher). Admins create student and teacher accounts and reset their
+# passwords; admins are NOT created through the API (only via the bootstrap
+# in database.py), so `role` here is restricted to student/teacher.
+#
+# Grades cover the whole-school range (4..12). For students, current_grade
+# (stored in users.student_year) and entry_grade (users.entry_grade) are
+# required; for teachers they carry no grade.
+
+ADMIN_CREATABLE_ROLES = {"student", "teacher"}
+MIN_GRADE = 4
+MAX_GRADE = 12
+MAX_FULL_NAME_LEN = 120
+MAX_USERNAME_BASE_LEN = 30
+MIN_PASSWORD_LEN = 8
+
+
+class AdminCreateUser(BaseModel):
+    """Validated payload for POST /admin/create-user.
+
+    The login username is generated server-side as
+    `{username_base}{4-digit-suffix}@miskschools.edu.sa`; the client supplies
+    only the base (a first name). The 4-digit suffix is allocated in the route
+    to guarantee uniqueness against existing usernames.
+    """
+    role: str
+    full_name: str
+    username_base: str
+    password: str = Field(..., min_length=MIN_PASSWORD_LEN)
+    current_grade: Optional[int] = None
+    entry_grade: Optional[int] = None
+
+    @field_validator('role')
+    @classmethod
+    def _validate_role(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in ADMIN_CREATABLE_ROLES:
+            raise ValueError("role must be 'student' or 'teacher'")
+        return v
+
+    @field_validator('full_name')
+    @classmethod
+    def _validate_full_name(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("full_name cannot be empty")
+        if len(v) > MAX_FULL_NAME_LEN:
+            raise ValueError(f"full_name must be {MAX_FULL_NAME_LEN} characters or fewer")
+        return v
+
+    @field_validator('username_base')
+    @classmethod
+    def _validate_username_base(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if not v:
+            raise ValueError("username_base cannot be empty")
+        if not (v.isascii() and v.isalpha()):
+            raise ValueError("username_base must be ASCII letters only (a-z)")
+        if len(v) > MAX_USERNAME_BASE_LEN:
+            raise ValueError(f"username_base must be {MAX_USERNAME_BASE_LEN} characters or fewer")
+        return v
+
+    @model_validator(mode='after')
+    def _validate_grades(self):
+        if self.role == 'student':
+            if self.current_grade is None or self.entry_grade is None:
+                raise ValueError("current_grade and entry_grade are required for students")
+            for grade, label in ((self.current_grade, 'current_grade'),
+                                 (self.entry_grade, 'entry_grade')):
+                if grade < MIN_GRADE or grade > MAX_GRADE:
+                    raise ValueError(f"{label} must be between {MIN_GRADE} and {MAX_GRADE}")
+            if self.entry_grade > self.current_grade:
+                raise ValueError("entry_grade cannot be later than current_grade")
+        else:
+            # Teachers carry no grade; ignore any values supplied.
+            self.current_grade = None
+            self.entry_grade = None
+        return self
+
+
+class AdminResetPassword(BaseModel):
+    """Validated payload for POST /admin/reset-password."""
+    user_id: int = Field(..., gt=0)
+    new_password: str = Field(..., min_length=MIN_PASSWORD_LEN)
+
+
+class AdminUserOut(BaseModel):
+    """Read model for an account in the admin views.
+
+    current_grade maps from users.student_year; entry_grade from
+    users.entry_grade. Both are None for teachers.
+    """
+    id: int
+    username: str
+    full_name: Optional[str]
+    role: str
+    current_grade: Optional[int] = None
+    entry_grade: Optional[int] = None
+
+
+class AdminUserList(BaseModel):
+    """Read model for GET /admin/users."""
+    users: List[AdminUserOut] = Field(default_factory=list)

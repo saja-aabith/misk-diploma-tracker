@@ -369,6 +369,10 @@ def init_database():
         "ALTER TABLE evidence_submissions ADD COLUMN file_size_bytes INTEGER",
         "ALTER TABLE evidence_submissions ADD COLUMN mime_type TEXT",
         "ALTER TABLE users ADD COLUMN student_year INTEGER",
+        # Admin chunk: grade a student joined the school in. current grade
+        # stays in student_year; entry_grade records the joining grade so the
+        # nine-year journey baseline is captured. Nullable; teachers leave it NULL.
+        "ALTER TABLE users ADD COLUMN entry_grade INTEGER",
         # Chunk 28: soft-deprecation flag for objectives. Existing rows
         # default to active; the restructure marks obsolete objectives 0.
         "ALTER TABLE objectives ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
@@ -470,6 +474,10 @@ def init_database():
     # review queue has content. Idempotent (gated on an empty submissions
     # table); independent of diploma eligibility and the skills profile.
     seed_archetype_submissions(conn)
+
+    # Bootstrap a single admin account from the environment, if requested.
+    # Gated on (env var set) AND (no admin yet); never ships a default password.
+    seed_admin_account(conn)
 
     conn.close()
 
@@ -1667,3 +1675,40 @@ def seed_archetype_submissions(conn):
 
     conn.commit()
     print(f"\u2713 Archetype demo submissions seeded ({seeded} submission(s))")
+
+def seed_admin_account(conn):
+    """Bootstrap a single admin account from the environment, if requested.
+
+    Creates username 'admin@miskschools.edu.sa' with role 'admin' using the
+    password in the ADMIN_INITIAL_PASSWORD environment variable.
+
+    Gated on BOTH:
+      1. the ADMIN_INITIAL_PASSWORD env var being set, and
+      2. no admin account already existing.
+    So it never ships a default/known password and never overwrites an
+    existing admin. If the env var is unset and no admin exists, it prints a
+    notice and does nothing (the first admin is created the next time the
+    server starts with the variable set).
+    """
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+    if cursor.fetchone()[0] != 0:
+        return
+
+    initial_pw = os.getenv("ADMIN_INITIAL_PASSWORD")
+    if not initial_pw:
+        print(
+            "ℹ️  No admin account exists and ADMIN_INITIAL_PASSWORD is not set; "
+            "skipping admin bootstrap. Set it in the environment to create the "
+            "first admin on next startup."
+        )
+        return
+
+    username = "admin@miskschools.edu.sa"
+    cursor.execute(
+        "INSERT INTO users (username, email, password_hash, role, full_name) "
+        "VALUES (?, ?, ?, 'admin', ?)",
+        (username, username, hash_password(initial_pw), "Administrator"),
+    )
+    conn.commit()
+    print(f"✓ Admin account bootstrapped ({username})")
