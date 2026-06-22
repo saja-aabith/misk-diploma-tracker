@@ -73,3 +73,11 @@ coverage/
 .cache/
 *.bak
 *.tmp
+
+# Public cloud deploy config (on-server only; not used)
+render.yaml
+
+# Catch all env files (secrets)
+*.env
+.env.*
+backend/.env
