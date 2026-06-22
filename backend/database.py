@@ -1704,7 +1704,7 @@ def seed_admin_account(conn):
         )
         return
 
-    username = "admin@miskschools.edu.sa"
+    username = "adminmdt@miskschools.edu.sa"
     cursor.execute(
         "INSERT INTO users (username, email, password_hash, role, full_name) "
         "VALUES (?, ?, ?, 'admin', ?)",
