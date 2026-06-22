@@ -13,10 +13,19 @@ from utils import UPLOAD_DIR
 # Initialize FastAPI app
 app = FastAPI(title="MISK Diploma Tracker API", version="1.0.0")
 
-# CORS configuration
+# CORS configuration. Allowed origins are read from the CORS_ALLOW_ORIGINS
+# env var (comma-separated) so the server's frontend origin can be set at
+# deploy time without code changes. Falls back to the local dev origin, so
+# the development workflow is unchanged. NOTE: when the frontend is served
+# same-origin behind a reverse proxy (the recommended setup) no cross-origin
+# requests are made and this list is not exercised. Do not set this to "*":
+# a wildcard is invalid in combination with allow_credentials=True.
+_cors_env = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000")
+ALLOWED_ORIGINS = [origin.strip() for origin in _cors_env.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

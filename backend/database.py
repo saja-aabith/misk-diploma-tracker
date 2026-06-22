@@ -139,19 +139,13 @@ NEW_OBJECTIVES = [
 # fixed objectives in the updated model). Shape:
 #   Academic 5 | Internship 2 | National Identity 3 | Leadership 1.
 # ---------------------------------------------------------------------
-HERO_PROGRESS_PROFILES = {
-    # Profile 0 — Hussain Alsaleh, real Year 12 student (consent on file). 100%
-    # across the mandatory objectives. His olympiad evidence + MIT sample are
-    # seeded as Misk Core ACTIVITIES by seed_hussain_hero. He is now the sole
-    # hero seeded by seed_data; the five archetypes are seeded separately with
-    # explicit results + Core ratings (so they do not use this index map).
-    0: {
-        "Academic":          {"IELTS": 100, "IGCSE": 100, "IAL": 100, "Qudurat": 100, "Tahsili": 100},
-        "Internship":        {"HPQ or EPQ": 100, "Industry Internship": 100},
-        "National Identity": {"Arabic Language": 100, "Islamic Studies": 100, "Social Studies": 100},
-        "Leadership":        {"CMI Level 2": 100},
-    },
-}
+# Retained as the mechanism for curated seeded progress, but the only prior
+# entry (Hussain, a real Year 12 student) has been removed so that no real
+# student data is seeded. The demo roster is now the five archetypes, each of
+# which seeds its own explicit progress in seed_demo_archetype(); they do not
+# use this index map. Consumers (_resolve_progress, seed_objective_restructure)
+# handle an empty map by falling back to 0/not_started. Empty by design.
+HERO_PROGRESS_PROFILES = {}
 
 # ---------------------------------------------------------------------
 # Chunk 25: hero student grade-year assignments for the journey timeline.
@@ -166,7 +160,9 @@ HERO_PROGRESS_PROFILES = {
 # nodes rendered as muted outlines).
 # ---------------------------------------------------------------------
 HERO_STUDENT_YEARS = {
-    0: 12,  # Hussain Alsaleh — Real Year 12 student (olympiad evidence)
+    # Hussain (the only prior hero) has been removed; the archetypes set their
+    # own student_year in seed_demo_archetype(). seed_hero_student_years()
+    # handles an empty map by doing nothing. Empty by design.
 }
 
 
@@ -459,18 +455,21 @@ def init_database():
     # seed_misk_core_quadrant (it needs the Misk Core quadrant to exist).
     seed_objective_restructure(conn)
 
-    # Chunk 32: Hussain's hero evidence is now seeded as APPROVED Misk Core
-    # ACTIVITIES — five olympiad certificates under "Competitions and Awards"
-    # and the watermarked MIT sample under "Career Planning". Re-enabled after
-    # the activity model + categories exist. Idempotent (gated per file).
-    seed_hussain_hero(conn)
+    # Hussain (a real Year 12 student) is no longer seeded: his user is not
+    # created and his evidence files are not written, so no real student data
+    # lands on the server. seed_hussain_hero() remains defined but is
+    # intentionally not called. The demo roster is the five archetypes below.
 
     # Demo archetypes — five distinct students whose Grade 7->12 Misk Core
     # activities light up the full skills framework, each with a different
-    # signature. Replaces the legacy cohort; Hussain (above) stays as the
-    # real-evidence student. Idempotent; runs after the active objective set,
-    # categories, and core_skill_ratings all exist.
+    # signature. Idempotent; runs after the active objective set, categories,
+    # and core_skill_ratings all exist.
     seed_demo_archetypes(conn)
+
+    # A few Type 1 evidence submissions for the archetypes so the teacher
+    # review queue has content. Idempotent (gated on an empty submissions
+    # table); independent of diploma eligibility and the skills profile.
+    seed_archetype_submissions(conn)
 
     conn.close()
 
@@ -841,13 +840,12 @@ def seed_data(conn):
             (identifier, identifier, password_hash, "teacher", full_name)
         )
 
-    # Student insertion order = the seed_index used by HERO_PROGRESS_PROFILES.
-    # The legacy random/named cohort has been retired: the demo roster is now
-    # Hussain (real evidence, seeded here as the sole hero at index 0) plus the
-    # five archetypes seeded later by seed_demo_archetypes(). Do NOT reorder.
-    student_seed = [
-        ("hussain",  "Hussain Alsaleh"),       # seed_index 0 — real Year 12 student (olympiad evidence)
-    ]
+    # The demo roster is the five archetypes, seeded later by
+    # seed_demo_archetypes() (each creates its own user). seed_data therefore
+    # seeds no students directly; Hussain (a real student) was removed so no
+    # real student data is created. The loop below is kept generic so seeded
+    # students can be added here again if ever needed.
+    student_seed = []
 
     used_suffixes = set()
     for first_lower, full_name in student_seed:
@@ -922,9 +920,13 @@ def seed_data(conn):
     file_types = ["report.pdf", "presentation.pptx", "video.mp4", "essay.docx", "project.pdf"]
     statuses = ["submitted", "under_review", "approved", "rejected"]
 
-    # Only Hussain exists as a student at this point (the archetypes are seeded
-    # later), so keep this small — just enough to populate the review queue.
-    num_submissions = random.randint(6, 10)
+    # seed_data no longer seeds any students directly (the five archetypes are
+    # seeded later and bring their own Misk Core activities), so there is no
+    # student to attach these Type 1 evidence submissions to. Guard against an
+    # empty roster: with no students, num_submissions is 0 and the loop below is
+    # skipped, avoiding random.choice() on an empty list. If seeded students are
+    # ever re-added to student_seed, this populates the review queue again.
+    num_submissions = random.randint(6, 10) if student_ids else 0
 
     for _ in range(num_submissions):
         student_id = random.choice(student_ids)
@@ -1577,3 +1579,91 @@ def seed_demo_archetypes(conn):
     for spec in DEMO_ARCHETYPES:
         seed_demo_archetype(conn, spec)
     print(f"\u2713 Demo archetypes seeded ({len(DEMO_ARCHETYPES)} students).")
+
+
+def seed_archetype_submissions(conn):
+    """Seed a small set of Type 1 evidence submissions for the demo archetypes
+    so the teacher review queue has content. The archetypes otherwise evidence
+    everything through Misk Core activities, which would leave the structured
+    submission queue empty.
+
+    Idempotent: gated on evidence_submissions being empty, so it seeds once on a
+    fresh database and never duplicates on restart.
+
+    These rows are demo queue content ONLY. They are independent of diploma
+    eligibility (driven by student_objective_progress) and of the skills profile
+    (driven by core_skill_ratings), so seeding them changes neither.
+
+    Statuses follow the documented lifecycle (submitted -> under_review ->
+    approved/rejected) and any seeded reviews are kept consistent with the
+    submission's status so the demo is not misleading.
+
+    NOTE: file_path/file_name are placeholders (no real file on disk), matching
+    the prior random submission seeding. The queue lists them; opening the file
+    itself will not resolve to bytes.
+    """
+    cursor = conn.cursor()
+
+    # Gate: only seed when there are no submissions at all.
+    cursor.execute("SELECT COUNT(*) FROM evidence_submissions")
+    if cursor.fetchone()[0] != 0:
+        return
+
+    cursor.execute("SELECT id FROM users WHERE role = 'student' ORDER BY id")
+    student_ids = [r['id'] for r in cursor.fetchall()]
+    cursor.execute("SELECT id FROM objectives WHERE is_active = 1 ORDER BY id")
+    objective_ids = [r['id'] for r in cursor.fetchall()]
+    cursor.execute("SELECT id FROM users WHERE role = 'teacher' ORDER BY id")
+    teacher_ids = [r['id'] for r in cursor.fetchall()]
+
+    # If any of these are missing (e.g. archetypes not seeded), skip safely.
+    if not student_ids or not objective_ids or not teacher_ids:
+        return
+
+    t0 = teacher_ids[0]
+    t1 = teacher_ids[1] if len(teacher_ids) > 1 else teacher_ids[0]
+
+    def pick(seq, i):
+        return seq[i % len(seq)]
+
+    # Deterministic plan (no RNG): (student_index, objective_index, status,
+    # reviews). reviews = list of (teacher_id, rating, decision, feedback).
+    # Spans the lifecycle so the queue shows pending and completed work.
+    plan = [
+        (0, 0, "submitted",    []),
+        (1, 1, "submitted",    []),
+        (2, 2, "submitted",    []),
+        (3, 3, "under_review", [(t0, 3, "approved", "Good start; reviewing.")]),
+        (4, 4, "approved",     [(t0, 4, "approved", "Strong evidence."),
+                                (t1, 3, "approved", "Meets the objective.")]),
+        (0, 5, "rejected",     [(t0, 1, "rejected", "Please resubmit with more detail.")]),
+    ]
+
+    seeded = 0
+    for offset, (s_i, o_i, status, reviews) in enumerate(plan):
+        student_id = pick(student_ids, s_i)
+        objective_id = pick(objective_ids, o_i)
+        submission_date = (datetime.utcnow() - timedelta(days=offset)).isoformat()
+        cursor.execute(
+            """INSERT INTO evidence_submissions
+               (student_id, objective_id, file_path, file_name, description,
+                status, submission_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (student_id, objective_id,
+             f"/uploads/demo_submission_{offset + 1}.pdf",
+             f"demo_submission_{offset + 1}.pdf",
+             "Demo evidence submission.",
+             status, submission_date),
+        )
+        submission_id = cursor.lastrowid
+        for teacher_id, rating, decision, feedback in reviews:
+            cursor.execute(
+                """INSERT INTO evidence_reviews
+                   (submission_id, teacher_id, rating, feedback, decision)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (submission_id, teacher_id, rating, feedback, decision),
+            )
+        seeded += 1
+
+    conn.commit()
+    print(f"\u2713 Archetype demo submissions seeded ({seeded} submission(s))")

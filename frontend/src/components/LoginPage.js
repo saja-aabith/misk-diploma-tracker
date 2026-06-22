@@ -95,10 +95,11 @@ function LoginPage() {
         </form>
 
         {/*
-          Demo credentials are hardcoded for the pre-buy-in demo. Suffixes
-          are produced by random.seed(MISK_TRACKER_SEED) in backend
-          database.py::seed_data() and are stable across reseeds. To verify
-          or update after any seed change, run:
+          Demo credentials for the pre-buy-in demo. The five demo archetype
+          students have fixed usernames (firstname + 2026), seeded by
+          database.py::seed_demo_archetypes(); the teacher is seeded by
+          seed_data(). All use the demo password "password123". To verify
+          after any seed change, run:
             sqlite3 backend/diploma_tracker.db \
               "SELECT username FROM users WHERE role='student' ORDER BY id LIMIT 1;"
             sqlite3 backend/diploma_tracker.db \
@@ -106,7 +107,7 @@ function LoginPage() {
         */}
         <div className="demo-credentials">
           <strong>Demo Credentials:</strong><br />
-          Student — Email: <code>ahmed2951@miskschools.edu.sa</code> Password: <code>password123</code><br />
+          Student — Email: <code>faisal2026@miskschools.edu.sa</code> Password: <code>password123</code><br />
           Teacher — Email: <code>mthomas@miskschools.edu.sa</code> Password: <code>password123</code>
         </div>
       </div>
